@@ -16,6 +16,21 @@ ri5cy处理器采用了四级流水线设计，包括取指（Instruction Fetch�
 
 #### 安装教程
 
+需要的工具
+1. Verilator: https://www.veripool.org/wiki/verilator
+2. Binutils for RISC-V
+
+```
+wget https://ftp.gnu.org/gnu/binutils/binutils-2.33.1.tar.gz
+tar xf binutils-2.33.1.tar.gz
+mkdir binutils-build
+cd binutils-build
+../binutils-2.33.1/configure --target=riscv32-unknown-elf –prefix=$PREFIX
+make -j$CORES
+make install
+```
+3. GTKWave: http://gtkwave.sourceforge.net/ 
+
 `gitclone https://gitee.com/qmppmq/riscv/master`
 
 #### 已添加指令
