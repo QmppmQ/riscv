@@ -1,39 +1,48 @@
 # riscv
 
 #### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
+本项目基于riscv指令集处理器ri5cy(https://github.com/openhwgroup/cv32e40p)，通过添加自定义卷积指令加速卷积运算。
 
-#### 软件架构
-软件架构说明
+#### 硬件架构
+
+ri5cy处理器采用了四级流水线设计，包括取指（Instruction Fetch，简称IF）、译码（Instruction Decode，简称ID）、执行（Instruction Execute，简称EX）和写回（Write-Back，简称WB）四个阶段
+![输入图片说明](https://images.gitee.com/uploads/images/2021/0312/193626_27950d03_8797935.png "ri5cy架构.png")
+
+通过在译码模块riscv_decoder中添加自定义卷积指令，并且在执行模块riscv_ex_stage中调用卷积加速模块riscv_mac_ops，使得处理器可以加速卷积运算。
+![输入图片说明](https://images.gitee.com/uploads/images/2021/0312/191900_f1627663_8797935.png "加速系统架构.png")
+
+卷积加速模块使用winograd算法加速运算。
 
 
 #### 安装教程
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+`gitclone https://gitee.com/qmppmq/riscv/master`
+
+#### 已添加指令
+
+![输入图片说明](https://images.gitee.com/uploads/images/2021/0312/200845_412da748_8797935.png "已添加指令.png")
+
+指令皆为R-type格式
+
+![输入图片说明](https://images.gitee.com/uploads/images/2021/0312/200852_57492315_8797935.png "R-type格式.png")
+
+卷积汇编指令示例
+
+```
+.insn r 0x2b, 2, 0, a4, a5, a3
+```
+
+
 
 #### 使用说明
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
-
-#### 参与贡献
-
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+1.  在riscv_decoder中添加自定义指令，并且在riscv_ex_stage中调用执行模块进行运算。
+2.  在./verilator-model目录下修改汇编文件examples.s，处理器会运行examples.s编译后的程序。
+3.  在./verilator-model目录下
+```
+make
+./testbench
+```
+4.  生成波形图model.vcd
 
 
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
