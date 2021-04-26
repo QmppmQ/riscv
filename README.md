@@ -25,7 +25,7 @@ wget https://ftp.gnu.org/gnu/binutils/binutils-2.33.1.tar.gz
 tar xf binutils-2.33.1.tar.gz
 mkdir binutils-build
 cd binutils-build
-../binutils-2.33.1/configure --target=riscv32-unknown-elf –prefix=$PREFIX
+../binutils-2.33.1/configure --target=riscv32-unknown-elf –-prefix=$PREFIX
 make -j$CORES
 make install
 ```
