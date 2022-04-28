@@ -57,24 +57,24 @@ verilator -V
 
 2.riscv-gnu-toolchain:	https://github.com/riscv-collab/riscv-gnu-toolchain
   这里用的tag:2022.03.25或者2022.03.09的版本 某些版本会导致编译报错或者编译完的可执行文件不能被处理器正确运行
-```
+```bash
 git clone https://github.com/riscv/riscv-gnu-toolchain
 cd riscv-gnu-toolchain/
 git checkout 2022.03.25 #或者选择下面版本
 # git checkout 2022.03.09
 ```
 riscv-gnu-toolchain中的qemu太大且编译并不需要，clone后可以排除qemu这个子仓库
-```
+```bash
 cd riscv-gnu-toolchain/
 git rm qemu
 ```
 Git clone的主仓库并不包含子仓库的内容，所以需要继续更新子仓库。
-```
+```bash
 git submodule init
 git submodule update --progress
 ```
 目前发现子模块的riscv-binutils2.38版本存在问题，会导致后续编译器报错找不到一些伪指令，建议使用2.37版本或者2.36.1版本，且更新riscv-dejagnu子模块
-```
+```bash
 cd ~/riscv-gnu-toolchain/riscv-dejagnu/
 git checkout
 cd ~/riscv-gnu-toolchain/riscv-binutils/
@@ -82,7 +82,7 @@ git checkout riscv-binutils-2.37 #或者选择下面版本
 # git checkout riscv-binutils-2.36.1
 ```
 构建工具链需要几个标准包。在 Ubuntu 上，执行以下命令：
-```
+```bash
 sudo apt-get install autoconf automake autotools-dev curl python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev
 ```
 ### 编译 riscv-gnu-toolchain
@@ -156,7 +156,7 @@ riscv32gcc -S lenet.c #编译lenet.c出lenet.s汇编文件
 cp -r $your_path/riscv/lenet.s $your_path/core-v-verif/cv32e40p/tests/programs/custom/lenet/lenet.S  # 注意这里放在lenet目录下的lenet.S S是大写 custom目录下的lenet文件夹需要自己新建
 ```
 core-v-verif/cv32e40p/tests/programs/custom/lenet/ 目录下还需要一个.yaml文件，可以直接复制其他custom代码的文件 这里直接复制hello-world下的test.yaml
-```
+```bash
 cp core-v-verif/cv32e40p/tests/programs/custom/hello-world/test.yaml core-v-verif/cv32e40p/tests/programs/custom/lenet/
 ```
 
