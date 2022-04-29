@@ -1,9 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <math.h>
 #include <time.h>
-//#include "cnn.h"
 //mat.h
 #define MaxPool 1
 #pragma once
@@ -19,24 +17,23 @@ typedef struct Mat2DSize {
 	int r; // h
 }nSize;
 
+// add
+void addmat(int** res, int** mat1, nSize resize, int** mat2, nSize matSize2);
 
-int** transpose_matrix(int **input, int c, int r);
+// correlation
+int** correlation(int** map, nSize kernel_size, int** inputData, nSize inSize, int type);
 
-int* conv_noreshape(int **in_addr,int **wt,int m);
+// conv
+int** cov(int** map, nSize kernel_size, int** inputData, nSize inSize, int type);
 
-void MaxPooling_noreshape(int** output,int* input,int inputSize,int bias);
+// 
+int** matEdgeExpand(int** mat, nSize matSize, int addc, int addr);
 
-void addmat_1d(int* res, int* mat1, int* mat2, int m);
+// 
+int** matEdgeShrink(int** mat, nSize matSize, int shrinkc, int shrinkr);
 
-void conv23(int model,int *addr);
-void wb23(int *addr);
-void w_wb(int rank, int value);
-void max_pooling();
-void mp_wb(int *addr);
-void mp_ri(int *addr);
-void relu(int bias);
-
-
+//
+int** transpose_matrix(int** input, int c, int r);
 
 #endif
 
@@ -88,11 +85,10 @@ typedef struct out_layer {
 
 
 int activation_relu(int input, int bas);
-int activation_no_relu(int input, int bas);
 void MaxPooling(int** output, nSize outputSize, int** input, nSize inputSize, int kernel_size, int stride);
-void read_file_fc(char* filename, int a, int b, FcLayer* fc);
-void read_file_out(char* filename, int a, int b, OutLayer* fc);
-void read_file_conv(char* filename, int a, int b, int c, int d, CovLayer* conv);
+//void read_file_fc(char* filename, int a, int b, FcLayer* fc);
+//void read_file_out(char* filename, int a, int b, OutLayer* fc);
+//void read_file_conv(char* filename, int a, int b, int c, int d, CovLayer* conv);
 int** read_image(char* filename);
 int*** input(int** inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels);
 int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels);
@@ -102,157 +98,236 @@ int* fc(int* inputData, char* filename, int inputNum, int outputNum);
 void* output(int* inputData, char* filename, int inputNum, int outputNum, char* filename1);
 //mat.c
 //将乘结果累加
-void addmat_1d(int* res, int* mat1, int* mat2, int m)
+void addmat(int** res, int** mat1, nSize matSize1, int** mat2, nSize matSize2)
 {
-	for (int i = 0; i < m; i++)
+	int i, j;
+	int count = 0;
+	if (matSize1.c != matSize2.c || matSize1.r != matSize2.r)
 	{
-			res[i] = mat1[i] + mat2[i];
+		//printf("ERROR: Size is not same!");
+	}
+
+
+
+	for (i = 0; i < matSize1.c; i++)
+	{
+		for (j = 0; j < matSize1.r; j++)
+		{
+			res[i][j] = mat1[i][j] + mat2[i][j];
+			//count++;
+			//printf("res[i][j]=%f		", res[i][j]);
+		}
+		//printf("\n");
+	}
+	//printf("\n");
+}
+
+/*
+full:
+5 * 5 conv 3 * 3 = (5 + 3 - 1) * (5 + 3 - 1)
+inSize + (kernel_size - 1)
+
+same:
+5 * 5 conv 3 * 3 = 5 * 5
+inSize
+
+valid:
+5 * 5 conv 3 * 3 = (5 - 3 + 1) * (5 - 3 + 1)
+inSize - (kernel_size - 1)
+
+*/
+//选择不同的补0操作
+int** correlation(int** map, nSize kernel_size, int** inputData, nSize inSize, int type)
+{
+	int i, j, c, r;
+	int halfkernel_sizew;
+	int halfkernel_sizeh;
+
+	if (kernel_size.r % 2 == 0 && kernel_size.c % 2 == 0)
+	{ // even
+		halfkernel_sizew = (kernel_size.c) / 2;
+		halfkernel_sizeh = (kernel_size.r) / 2;
+	}
+	else
+	{ // odd
+		halfkernel_sizew = (kernel_size.c - 1) / 2;
+		halfkernel_sizeh = (kernel_size.r - 1) / 2;
+	}
+
+	// full -> inSize+(kernel_size-1)
+	// int outSizeW = inSize.c + (kernel_size.c - 1);
+	// int outSizeH = inSize.r + (kernel_size.r - 1);
+	// valid -> inSize-(kernel_size-1)
+	int outSizeW = inSize.c - (kernel_size.c - 1);
+	int outSizeH = inSize.r - (kernel_size.r - 1);
+
+	int** outputData = (int**)malloc(outSizeH * sizeof(int*));
+	for (i = 0; i < outSizeH; i++)
+	{
+		outputData[i] = (int*)calloc(outSizeW, sizeof(int));
+	}
+
+	// int** exInputData = matEdgeExpand(inputData, inSize, kernel_size.c - 1, kernel_size.r - 1);
+	/*for (r = 0; r < kernel_size.r; r++)
+	{
+		for (c = 0; c < kernel_size.c; c++)
+		{
+			printf("		map[r][c] =%f", map[r][c]);
+
+		}
+	}
+	for (j = 0; j < r + 2 * 4; j++)
+	{
+		for (i = 0; i < c + 2 * 4; i++)
+		{
+			printf("		exInputData[i][j]=%f", exInputData[i][j]);
+		}
+	}*/
+	int count = 0;
+	for (j = 0; j < outSizeH; j++)
+	{
+		for (i = 0; i < outSizeW; i++)
+		{
+			for (r = 0; r < kernel_size.r; r++)
+			{
+				for (c = 0; c < kernel_size.c; c++)
+				{
+					outputData[j][i] = outputData[j][i] + map[r][c] * inputData[j + r][i + c];
+					// outputData[j][i] = outputData[j][i] + map[r][c] * exInputData[j + r][i + c];
+					//printf("outputData= %f		 ", outputData);
+					//count++;
+				}
+			}
+		}
+	}
+	//printf("count=%d\n	", count);
+	// for (i = 0; i < inSize.r + 2 * (kernel_size.r - 1); i++)
+	// {
+	// 	free(exInputData[i]);
+	// }
+	// free(exInputData);
+	nSize outSize = { outSizeW,outSizeH };
+	switch (type)
+	{
+	case full:
+		return outputData;
+	case same:
+	{
+		int** sameres = matEdgeShrink(outputData, outSize, halfkernel_sizew, halfkernel_sizeh);
+		for (i = 0; i < outSize.r; i++)
+		{
+			free(outputData[i]);
+		}
+		free(outputData);
+		return sameres;
+	}
+	case valid:
+	{
+		int** validres;
+		if (kernel_size.r % 2 == 0 && kernel_size.c % 2 == 0)
+		{
+			validres = matEdgeShrink(outputData, outSize, halfkernel_sizew * 2 - 1, halfkernel_sizeh * 2 - 1);
+		}
+		else
+		{
+			validres = matEdgeShrink(outputData, outSize, halfkernel_sizew * 2, halfkernel_sizeh * 2);
+		}
+		for (i = 0; i < outSize.r; i++)
+		{
+			free(outputData[i]);
+		}
+		free(outputData);
+		return validres;
+	}
+	default:
+		return outputData;
 	}
 }
 
-int* conv_noreshape(int **in_addr,int **wt,int m) {
-	int w = m;
-	int **b;
-	for(int i=0; i<3; i++){
-		for(int j=0; j<3; j++){
-			w_wb(3*i+j+1,wt[i][j]);
-		}
-	}
-	int balance_num;
-	if(m%2==0){
-		;
-	}
-	else{
-		b = (int**)malloc((m+1) * sizeof(int*));
-		for (int i = 0; i < m+1; i++){
-			b[i] = (int*)malloc((m+1) * sizeof(int));
-		}
-		for(int i=0; i<m; i++){
-			for(int j=0; j<m; j++){
-				b[i][j] = in_addr[i][j];
-			}
-			// if(i>1){
-			// 	balance_num = -(wt[0][0]*b[i-2][m-2] + wt[0][1]*b[i-2][m-1] + \
-			// 	wt[0][2]*b[i-2][m] + wt[1][0]*b[i-1][m-2] + wt[1][1]*b[i-1][m-1] +\
-			// 	wt[1][2]*b[i-1][m] + wt[2][0]*b[i][m-2] + wt[2][1]*b[i][m-1])-1000000;
-			// 	b[i][m] = balance_num/wt[2][2];
-			// }
-			// else{
-				b[i][m] = 0;
-			// }
-
-		}
-		for(int k=0; k<m+1; k++){
-			// if(k>1){
-			// 	balance_num = -(wt[0][0]*b[m-2][k-2] + wt[0][1]*b[m-2][k-1] + \
-			// 	wt[0][2]*b[m-2][k] + wt[1][0]*b[m-1][k-2] + wt[1][1]*b[m-1][k-1] +\
-			// 	wt[1][2]*b[m-1][k] + wt[2][0]*b[m][k-2] + wt[2][1]*b[m][k-1])-1000000;
-			// 	b[m][k]=balance_num/wt[2][2];
-			// }
-			// else{
-				b[m][k] = 0;
-			// }
-		}
-	}
-
-	if(m%2==0){}
-	else{
-		w = m+1;
-	}
-
-	int row_step = (w - 4) / 2 +1 ;
-	int col_step = row_step;
-	int* a = (int*)malloc(16*row_step*col_step * sizeof(int));
-	int x;
-	if(m%2==0){
-		for(int i=0; i<2*col_step; i+=2){
-			for(int j=0;j<2*row_step;j+=2){
-				x = 8*(j+row_step*i);
-				a[x] = in_addr[i][j];
-				a[1+x] = in_addr[i][j+1];
-				a[2+x] = in_addr[i][j+2];
-				a[3+x] = in_addr[i][j+3];
-				a[4+x] = in_addr[i+1][j];
-				a[5+x] = in_addr[i+1][j+1];
-				a[6+x] = in_addr[i+1][j+2];
-				a[7+x] = in_addr[i+1][j+3];
-				a[8+x] = in_addr[i+2][j];
-				a[9+x] = in_addr[i+2][j+1];
-				a[10+x] = in_addr[i+2][j+2];
-				a[11+x] = in_addr[i+2][j+3];
-				a[12+x] = in_addr[i+3][j];
-				a[13+x] = in_addr[i+3][j+1];
-				a[14+x] = in_addr[i+3][j+2];
-				a[15+x] = in_addr[i+3][j+3];
-			}
-		}
-	}
-	else{
-		for(int i=0; i<2*col_step; i+=2){
-			for(int j=0;j<2*row_step;j+=2){
-				x = 8*(j+row_step*i);
-				a[x] = b[i][j];
-				a[1+x] = b[i][j+1];
-				a[2+x] = b[i][j+2];
-				a[3+x] = b[i][j+3];
-				a[4+x] = b[i+1][j];
-				a[5+x] = b[i+1][j+1];
-				a[6+x] = b[i+1][j+2];
-				a[7+x] = b[i+1][j+3];
-				a[8+x] = b[i+2][j];
-				a[9+x] = b[i+2][j+1];
-				a[10+x] = b[i+2][j+2];
-				a[11+x] = b[i+2][j+3];
-				a[12+x] = b[i+3][j];
-				a[13+x] = b[i+3][j+1];
-				a[14+x] = b[i+3][j+2];
-				a[15+x] = b[i+3][j+3];
-			}
-		}
-	}
-
-	int* c = (int*)malloc((w-2)*(w-2) * sizeof(int));
-	int *pc = &c[0];
-
-	int *addr = &a[0];
-
-	for(int j=0;j<row_step*col_step;j++){
-			if((j%row_step)==0){
-				conv23(0,addr+16*j);
-			}
-			else{
-				conv23(1,addr+16*j);
-			}
-			wb23(pc+4*j);
-	}
-	int y,z;
-	if(m%2!=0){
-		for(int i=1; i<(w-2)/2+1;i++){
-			z = (w-2)*2*i;
-			y = (w-2)*(w-4)+4*i;
-			*(pc+z-3)=-1000000;
-			*(pc+z-1)=-1000000;
-			*(pc+y-2) = -1000000;
-			*(pc+y-1) = -1000000;
-		}
-	}
-
-	return c;
+//
+int** cov(int** map, nSize kernel_size, int** inputData, nSize inSize, int type)
+{
+	//int i;
+	int** res = correlation(map, kernel_size, inputData, inSize, type);
+	return res;
 }
 
+//full补0方式
+int** matEdgeExpand(int** mat, nSize matSize, int addc, int addr)
+{
+	int i, j = 0;
+	int c = matSize.c;
+	int r = matSize.r;
+	int** res = (int**)malloc((r + 2 * addr) * sizeof(int*));
+	/*for (i = 0; i < 28; i++)
+		for (j = 0; j < 28; j++)
+			printf("mat[i][j]= %f\n", mat[i][j]);
+	printf("\n\n");
+	*/
+	for (i = 0; i < (r + 2 * addr); i++)
+	{
+		res[i] = (int*)malloc((c + 2 * addc) * sizeof(int));
+	}
+	for (j = 0; j < r + 2 * addr; j++)
+	{
+		for (i = 0; i < c + 2 * addc; i++)
+		{
+			if (j < addr || i < addc || j >= (r + addr) || i >= (c + addc))
+
+				res[j][i] = (int)0.0;
+			else
+				res[j][i] = mat[j - addr][i - addc];
+			//printf("		res[i][j]=%f", res[i][j]);
+		}
+	}
+
+	return res;
+}
+//same、valid方式补0
+int** matEdgeShrink(int** mat, nSize matSize, int shrinkc, int shrinkr)
+{
+	int i, j;
+	int c = matSize.c;
+	int r = matSize.r;
+	int** res = (int**)malloc((r - 2 * shrinkr) * sizeof(int*));
+	for (i = 0; i < (r - 2 * shrinkr); i++)
+	{
+		res[i] = (int*)malloc((c - 2 * shrinkc) * sizeof(int));
+	}
+
+	for (j = 0; j < r; j++)
+	{
+		for (i = 0; i < c; i++)
+		{
+			if (j >= shrinkr && i >= shrinkc && j < (r - shrinkr) && i < (c - shrinkc))
+			{
+				res[j - shrinkr][i - shrinkc] = mat[j][i];
+			}
+		}
+	}
+	return res;
+}
+
+
+//
 int** transpose_matrix(int** input, int c, int r)
 {
 	int** output;
 	output = (int**)malloc(sizeof(int*) * r);
 	int i, j, k;
+	//int count=0;
 	for (i = 0; i < r; i++)
 	{
 		output[i] = (int*)malloc(sizeof(int) * c);
 		for (j = 0; j < c; j++)
 		{
 			output[i][j] = input[j][i];
+			//count++;
+			//printf("%f\n", output[i][j]);
+
 		}
 	}
+	//printf("%d", count);
 	return output;
 }
 int activation_relu(int input, int bias)
@@ -260,7 +335,6 @@ int activation_relu(int input, int bias)
 	int temp = input + bias;
 	return (temp > 0) ? temp : 0;
 }
-
 
 void MaxPooling(int** output, nSize outputSize, int** input, nSize inputSize, int kernel_size, int stride)
 {
@@ -291,251 +365,78 @@ void MaxPooling(int** output, nSize outputSize, int** input, nSize inputSize, in
 				}
 			}
 			output[i][j] = sum;
+			//printf("%f\n",output[i][j]);
 			t_n = t_n + stride;
 		}
 		t_m = t_m + stride;
 		t_n = 0;
 	}
+	//printf("n", count);
 }
 
-// void MaxPooling(int** output, nSize outputSize, int** input, nSize inputSize, int kernel_size, int stride){
-// 	// int maxpool_s;
-// 	// int maxpool_e;
-// 	// int padding_s;
-// 	// int padding_e;
-// 	// int reshape1_s;
-// 	// int reshape1_e;
-// 	// int reshape2_s;
-// 	// int reshape2_e;
-// 	int null;
-// 	int in1=0;
-// 	int in2=0;
-// 	// __asm__ __volatile__(
-// 	// "rdcycle %[rdcycle]"
-// 	// :[rdcycle] "=r"(maxpool_s)
-// 	// );
-// 	int m = inputSize.c;
-// 	int *a;
-// 	int *c;
-// 	if(m%2==0){
-// 		a = (int*)malloc(m*m * sizeof(int));
-// 		c = (int*)malloc((m/2)*(m/2) * sizeof(int));
-// 	}
-// 	else{
-// 		a = (int*)malloc((m+1)*(m+1) * sizeof(int));
-// 		c = (int*)malloc(((m+1)/2)*((m+1)/2) * sizeof(int));
-// 	}
-// 	int *addr_in = &a[0];
-// 	int *addr_out = &c[0];
-// 	int **b;
-// 	int y;
-	
-
-// 	if(m%2 == 0){
-// 		// __asm__ __volatile__(
-// 		// "rdcycle %[rdcycle]"
-// 		// :[rdcycle] "=r"(reshape1_s)
-// 		// );
-// 		for(int i=0; i<m; i+=2){
-// 			for(int j=0;j<m;j+=2){
-// 				y = 2*(i*m/2+j);
-// 				a[y] = input[i][j];
-// 				a[y+1] = input[i][j+1];
-// 				a[y+2] = input[i+1][j];
-// 				a[y+3] = input[i+1][j+1];
-// 			}
-// 		}
-// 		// __asm__ __volatile__(
-// 		// "rdcycle %[rdcycle]"
-// 		// :[rdcycle] "=r"(reshape1_e)
-// 		// );
-// 	}
-// 	else{
-// 		m = m+1;
-// 		// __asm__ __volatile__(
-// 		// "rdcycle %[rdcycle]"
-// 		// :[rdcycle] "=r"(padding_s)
-// 		// );
-// 		b = (int**)malloc(m * sizeof(int*));
-// 		for (int i = 0; i < m; i++){
-// 			b[i] = (int*)malloc(m * sizeof(int));
-// 		}	
-// 		for(int i=0; i<m-1; i++){
-// 			for(int j=0; j<m-1; j++){
-// 				b[i][j] = input[i][j];
-// 			}
-// 			b[i][m-1] = 0;
-// 		}
-// 		for(int k=0; k<m; k++){
-// 			b[m-1][k] = 0;
-// 		}
-// 		// __asm__ __volatile__(
-// 		// "rdcycle %[rdcycle]"
-// 		// :[rdcycle] "=r"(padding_e)
-// 		// );
-// 		// __asm__ __volatile__(
-// 		// "rdcycle %[rdcycle]"
-// 		// :[rdcycle] "=r"(reshape2_s)
-// 		// );
-// 		for(int i=0; i<m; i+=2){
-// 			for(int j=0;j<m;j+=2){
-// 				y = 2*(i*(m)/2+j);
-// 				a[y] = b[i][j];
-// 				a[y+1] = b[i][j+1];
-// 				a[y+2] = b[i+1][j];
-// 				a[y+3] = b[i+1][j+1];
-// 			}
-// 		}
-// 		// __asm__ __volatile__(
-// 		// "rdcycle %[rdcycle]"
-// 		// :[rdcycle] "=r"(reshape2_e)
-// 		// );
-// 	}
-// 	for(int i=0; i<(m/2)*(m/2);i++){
-// 		mp_ri(addr_in+4*i);
-// 		// relu();
-// 		__asm__ __volatile__(
-// 		"addi zero,zero,0\n"
-// 		".insn r 0x77, 3, 0, %[null], %[in1], %[in2]"
-// 		:[null] "=r"(null)
-// 		:[in1]"r"(in1),[in2]"r"(in2)
-// 		);
-// 		// max_pooling();
-// 		__asm__ __volatile__(
-// 		"addi zero,zero,0\n"
-// 		".insn r 0x77, 2, 0, %[null], %[in1], %[in2]"
-// 		:[null] "=r"(null)
-// 		:[in1]"r"(in1),[in2]"r"(in2)
-// 		);
-// 		mp_wb(addr_out+i);
-// 	}
-
-// 	for(int i=0; i<m/2; i++){
-// 		for(int j=0;j<m/2;j++){
-// 			output[i][j] = c[i*(m/2)+j];
-// 		}
-// 	}
-// 	// __asm__ __volatile__(
-// 	// "rdcycle %[rdcycle]"
-// 	// :[rdcycle] "=r"(maxpool_e)
-// 	// );
-// 	// printf("maxpool cycle=%d\n",maxpool_e-maxpool_s);
-// 	// printf("padding cycle=%d\n",padding_e-padding_s);
-// 	// printf("reshape1 cycle=%d\n",reshape1_e-reshape1_s);
-// 	// printf("reshape2 cycle=%d\n",reshape2_e-reshape2_s);
-// }
-
-void MaxPooling_noreshape(int** output,int* input,int inputSize,int bias){
-
-	int m = inputSize;
-	int *c = (int*)malloc((m/2)*(m/2) * sizeof(int));
-	int *addr_in = &input[0];
-	int *addr_out = &c[0];
-	for(int i=0; i<(m/2)*(m/2);i++){
-		mp_ri(addr_in+4*i);
-		max_pooling();
-		// relu(bias);
-		mp_wb(addr_out+i);
-	}
-
-	for(int i=0; i<m/2; i++){
-		for(int j=0;j<m/2;j++){
-			output[i][j] = c[i*(m/2)+j];
-		}
-	}
-}
-
-int** read_image(char* filename)
-{
-	// FILE* file;
-	// file = fopen(filename, "rb");//test
-
-	int w=28;
-	int h=28;
-	// fread(&w, sizeof(int), 1, file);
-	// fread(&h, sizeof(int), 1, file);
-	// fprintf(stderr, "image size w = %d, image size h =  %d \n", w, h);
-
-	// int i, j, k;
-
-	// int** image_data = (int**)malloc(sizeof(int*) * w);
-	// int temp[28];
-
-	// for (i = 0; i < w; i++)
-	// {
-	// 	image_data[i] = (int*)malloc(sizeof(int) * h);
-
-	// 	fread(temp, sizeof(int), h, file);
-	// 	for (j = 0; j < h; j++)
-	// 	{
-
-	// 		image_data[i][j] = temp[j] / 255.0;
-
-	// 		//printf("%f\n", image_data[i][j]);
-	// 	}
-	// 	//printf("\n");
-	// }
-	// //printf("\n");
-	// fclose(file);
+int** read_image_padding1(char* filename){
+	int w=30;
+	int h=30;
 
 	int** input_data;
 	input_data = (int**)malloc(w * sizeof(int*));
-	for (int i=0; i<28 ;i++){
+	for (int i=0; i<w ;i++){
 		input_data[i] = (int*)malloc(h * sizeof(int));
-	};
-
-
+	}
 
 	int** input_data_temp;
-		input_data_temp = (int**)malloc(sizeof(int*)*28);
-	for (int i=0; i<28 ;i++){
-		input_data_temp[i] = (int*)malloc(sizeof(int)*28);
-	};
-	int input_data_temp_mx[28][28]={{188,172,188,188,145,184,176,152,180,149,137,168,231,133,152,152,141,117,109,137,137,101,82,66,66,58,54,54},\
-{207,145,152,156,145,160,188,180,141,188,156,176,125,133,117,152,121,113,105,98,109,101,70,78,62,62,50,47},\
-{192,164,156,137,172,200,129,145,121,109,152,152,160,121,125,109,90,113,113,109,98,86,70,74,58,66,54,47},\
-{168,168,160,137,172,149,145,121,156,164,156,121,168,149,86,117,105,125,94,117,74,70,74,47,70,66,66,43},\
-{172,235,207,149,133,141,149,184,156,125,247,86,129,117,101,105,94,101,66,78,74,62,47,47,47,62,86,50},\
-{180,152,137,180,145,172,98,160,113,125,160,125,101,137,113,98,117,113,62,70,54,54,62,54,35,58,58,58},\
-{192,141,164,196,164,172,133,168,121,86,141,129,141,109,172,94,121,105,109,66,94,54,47,39,43,70,54,47},\
-{164,184,152,168,133,152,129,196,129,113,125,172,180,137,784,772,117,94,117,86,86,58,39,54,23,54,50,58},\
-{152,129,149,168,200,215,180,196,160,819,815,788,807,796,800,780,164,90,133,105,66,86,66,54,70,78,62,43},\
-{152,145,219,137,533,815,827,823,823,819,788,792,207,784,784,776,125,105,74,117,101,98,74,58,62,62,58,54},\
-{152,164,160,109,807,811,815,803,807,800,152,117,117,105,784,756,117,62,74,82,78,94,82,70,50,66,66,58},\
-{160,160,137,125,643,380,145,137,141,149,94,121,145,450,752,741,86,98,101,90,78,94,78,74,98,62,86,47},\
-{176,141,149,168,129,141,113,164,168,196,145,152,149,372,768,682,109,98,82,101,90,113,90,70,62,62,74,62},\
-{156,129,160,145,184,145,156,121,133,125,168,113,121,341,788,231,125,82,145,109,78,90,113,62,62,74,82,105},\
-{137,180,141,141,200,258,176,145,721,721,301,674,600,160,780,121,90,82,66,94,94,94,98,105,86,94,70,70},\
-{172,172,137,172,541,823,823,819,807,807,803,788,788,780,788,768,760,745,756,749,756,749,756,749,745,192,62,62},\
-{180,121,176,168,156,266,203,223,392,741,788,658,800,792,784,776,768,768,756,752,752,749,752,733,733,98,58,74},\
-{180,149,149,121,129,137,133,137,152,160,145,137,160,784,796,129,172,164,121,145,125,117,109,98,98,90,70,50},\
-{188,168,149,141,129,141,176,125,149,149,117,188,505,803,796,133,121,223,141,105,203,105,74,82,78,74,82,54},\
-{152,160,196,203,145,160,164,141,176,121,156,137,415,800,796,113,121,98,74,70,82,90,74,78,78,74,82,70},\
-{156,133,152,156,176,133,137,109,133,129,121,117,168,792,780,149,113,90,94,74,105,113,86,109,101,82,54,70},\
-{196,156,145,137,160,149,152,125,109,109,105,98,121,756,764,156,101,98,90,90,94,101,94,90,82,90,78,78},\
-{156,168,156,180,133,125,160,129,176,156,78,113,101,113,156,117,101,101,121,117,125,101,101,94,78,78,101,50},\
-{141,152,152,113,156,168,152,152,223,105,145,133,109,168,121,129,101,101,125,101,125,129,117,125,78,109,82,82},\
-{149,125,117,145,176,156,141,137,137,149,156,137,105,145,82,141,109,117,90,86,90,200,90,90,86,86,188,137},\
-{168,188,172,152,164,172,125,133,164,137,160,149,117,137,94,101,113,125,109,113,90,196,125,105,74,86,74,101},\
-{184,160,152,145,168,133,149,137,145,125,156,129,113,121,117,121,113,129,94,94,141,133,160,164,141,105,145,82},\
-{203,184,164,168,152,149,149,176,164,141,125,121,117,172,207,164,156,101,109,101,90,101,133,101,101,94,90,98}};
+		input_data_temp = (int**)malloc(w * sizeof(int*));
+	for (int i=0; i<w ;i++){
+		input_data_temp[i] = (int*)malloc(h * sizeof(int));
+	}
 
-	for(int i=0;i<28;i++){
-		for(int j=0;j<28;j++){
+int input_data_temp_mx[30][30]=\
+{{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,12,4,0,0,28,0,149,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,8,0,108,337,44,0,0,0,0,0,0,478,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,353,574,442,0,0,0,0,88,373,426,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,16,0,213,518,482,590,703,630,667,542,618,675,562,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,8,0,44,550,522,514,643,707,638,671,715,598,606,578,0,0,0},\
+{0,0,0,0,0,0,0,4,0,8,4,0,12,0,0,462,458,426,550,675,614,626,663,671,574,630,634,44,0,0},\
+{0,0,0,0,0,4,0,0,0,0,0,12,0,0,357,558,361,377,614,598,526,606,679,691,574,638,679,193,0,0},\
+{0,0,0,0,0,0,0,8,16,4,0,0,0,394,546,442,438,442,651,542,578,598,638,671,578,634,679,478,0,0},\
+{0,0,0,8,8,4,8,0,0,0,0,104,434,470,398,446,470,546,626,538,618,618,626,643,566,590,626,715,0,0},\
+{0,12,0,0,0,0,0,0,84,213,369,470,446,414,462,518,538,574,618,663,683,618,606,618,574,554,602,663,173,0},\
+{0,0,0,92,217,261,305,341,474,514,494,446,454,474,510,502,558,534,546,643,562,622,647,578,622,691,647,759,249,0},\
+{0,0,273,377,361,446,458,446,458,462,510,542,546,574,506,510,606,618,574,594,502,651,651,578,554,614,651,787,233,0},\
+{0,281,679,518,418,394,402,377,390,394,410,434,426,478,482,518,598,626,671,763,763,787,795,795,751,791,759,739,145,0},\
+{0,64,506,687,755,755,739,687,614,542,482,506,510,586,743,783,839,835,1024,839,711,984,1012,1008,1008,992,883,827,197,0},\
+{0,0,0,0,48,269,426,659,743,799,843,847,843,835,763,602,329,32,0,0,0,715,835,755,703,651,634,606,44,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},\
+{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+
+	for(int i=0;i<w;i++){
+		for(int j=0;j<h;j++){
 			input_data_temp[i][j] = input_data_temp_mx[i][j];
 		}
 	}
-	//int** addr = &input_data_temp_mx[0][0];
 
-
-	input_data = transpose_matrix(input_data_temp, w, h);
-
-	return input_data;
+	return input_data_temp;
 }
 
 int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels)
 {
-
+	//clock_t start, end;
+	// time_t start,end;
+	//start = clock();
+	// start = time(NULL);
 	int i, j, c, r;
 	int** mapout;
 	
@@ -558,133 +459,87 @@ int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, in
 		}
 	}
 	covL->basicData = (int*)malloc(outChannels * sizeof(int));
+
 	int outW = inputWidth - kernel_size + 1;
 	int outH = inputHeight - kernel_size + 1;
 
 	covL->v = (int***)malloc(sizeof(int**) * (outChannels));
 	covL->y = (int***)malloc(sizeof(int**) * (outChannels));
 
-	int outW_p,outH_p;
-	if(outW%2==0){
-		outW_p = outW/2; 
-		outH_p = outH/2;
-	}
-	else{
-		outW_p = (outW+1)/2;
-		outH_p = (outH+2)/2;
-	}
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		covL->v[j] = (int**)malloc(sizeof(int*) * outH_p);
-		covL->y[j] = (int**)malloc(sizeof(int*) * outH_p);
-		for (r = 0; r < outH_p; r++)
+		covL->v[j] = (int**)malloc(sizeof(int*) * outH);
+		covL->y[j] = (int**)malloc(sizeof(int*) * outH);
+		for (r = 0; r < outH; r++)
 		{
-			covL->v[j][r] = (int*)calloc(outW_p, sizeof(int));
-			covL->y[j][r] = (int*)calloc(outW_p, sizeof(int));
+			covL->v[j][r] = (int*)calloc(outW, sizeof(int));
+			covL->y[j][r] = (int*)calloc(outW, sizeof(int));
 		}
 	}
-	//read_file_conv(Filename, outChannels, inChannels, kernel_size, kernel_size, covL);
-	covL->mapData[0][0][0][0]=209;
-covL->mapData[0][0][0][1]=-149;
-covL->mapData[0][0][0][2]=-238;
-covL->mapData[0][0][1][0]=419;
-covL->mapData[0][0][1][1]=63;
-covL->mapData[0][0][1][2]=-173;
-covL->mapData[0][0][2][0]=67;
-covL->mapData[0][0][2][1]=314;
-covL->mapData[0][0][2][2]=-7;
-covL->mapData[1][0][0][0]=-490;
-covL->mapData[1][0][0][1]=-246;
-covL->mapData[1][0][0][2]=-133;
-covL->mapData[1][0][1][0]=-268;
-covL->mapData[1][0][1][1]=-3;
-covL->mapData[1][0][1][2]=402;
-covL->mapData[1][0][2][0]=-481;
-covL->mapData[1][0][2][1]=-88;
-covL->mapData[1][0][2][2]=306;
-covL->mapData[2][0][0][0]=-236;
-covL->mapData[2][0][0][1]=190;
-covL->mapData[2][0][0][2]=148;
-covL->mapData[2][0][1][0]=257;
-covL->mapData[2][0][1][1]=37;
-covL->mapData[2][0][1][2]=79;
-covL->mapData[2][0][2][0]=332;
-covL->mapData[2][0][2][1]=266;
-covL->mapData[2][0][2][2]=74;
-covL->mapData[3][0][0][0]=-51;
-covL->mapData[3][0][0][1]=198;
-covL->mapData[3][0][0][2]=117;
-covL->mapData[3][0][1][0]=-248;
-covL->mapData[3][0][1][1]=217;
-covL->mapData[3][0][1][2]=91;
-covL->mapData[3][0][2][0]=-240;
-covL->mapData[3][0][2][1]=27;
-covL->mapData[3][0][2][2]=265;
-covL->mapData[4][0][0][0]=174;
-covL->mapData[4][0][0][1]=-6;
-covL->mapData[4][0][0][2]=-227;
-covL->mapData[4][0][1][0]=118;
-covL->mapData[4][0][1][1]=289;
-covL->mapData[4][0][1][2]=437;
-covL->mapData[4][0][2][0]=-39;
-covL->mapData[4][0][2][1]=-215;
-covL->mapData[4][0][2][2]=-77;
-covL->mapData[5][0][0][0]=-178;
-covL->mapData[5][0][0][1]=-502;
-covL->mapData[5][0][0][2]=-284;
-covL->mapData[5][0][1][0]=241;
-covL->mapData[5][0][1][1]=122;
-covL->mapData[5][0][1][2]=-133;
-covL->mapData[5][0][2][0]=87;
-covL->mapData[5][0][2][1]=428;
-covL->mapData[5][0][2][2]=231;
-// covL->basicData[0]=-36;
-// covL->basicData[1]=21;
-// covL->basicData[2]=-8;
-// covL->basicData[3]=-3;
-// covL->basicData[4]=1;
-// covL->basicData[5]=0;
 
-// covL->basicData={-36,21,-8,-3,1,0};
-	int convL_basicData[6] = {-36,21,-8,-3,1,0};
-	// int convL_mapData[6][1][3][3] = 
+	//read_file_conv(Filename, outChannels, inChannels, kernel_size, kernel_size, covL);
+	int convL_basicData[6] = {-168,159,-332,-3,3,-5};
+	int convL_mapData[6][1][3][3] = {{{{-187,376,431},\
+									{-534,-33,300},\
+									{-186,104,20}}},\
+
+									{{{-183,505,418},\
+									{-904,-317,1163},\
+									{-863,-349,373}}},\
+									{{{117,185,47},\
+									{-198,141,-181},\
+									{58,-216,-278}}},\
+									{{{999,1235,415},\
+									{927,905,161},\
+									{292,-155,-13}}},\
+									{{{-911,902,30},\
+									{-1464,987,478},\
+									{-862,160,703}}},\
+									{{{249,129,433},\
+									{794,982,588},\
+									{324,626,819}}}};
+
+
 	for(int i=0; i<6; i++){
 		covL->basicData[i] = convL_basicData[i];
+	}
+
+	for(int i=0;i<6;i++){
+		for(int j=0;j<1;j++){
+			for(int k=0; k<3;k++){
+				for(int l=0;l<3;l++){
+					covL->mapData[i][j][k][l] = convL_mapData[i][j][k][l];
+				}
+			}
+			
+		}
 	}
 
 	nSize kernel_size1 = { kernel_size,kernel_size };
 	nSize inSize = { inputWidth,inputHeight };
 	nSize outSize = { outW,outH };
-	//test_tag
-	
-	int* mapout_1d = (int*)malloc(outW*outH * sizeof(int));
-	int** addmat_out = (int**)malloc(outChannels * sizeof(int*));
-	for(int m=0; m<outChannels; m++){
-		addmat_out[m] = (int*)malloc(outW*outH * sizeof(int));
-	}
-	
-	nSize outSize_pool = { outW_p,outH_p };
-	int relu_s = 0;
-	int relu_e = 0;
-	int div_s = 0;
-	int div_e = 0;
+
+
 	for (i = 0; i < (outChannels); i++)
 	{
 		for (j = 0; j < (inChannels); j++)
 		{
-			mapout_1d = conv_noreshape(inputData,covL->mapData[i][j],inputWidth);
-			addmat_1d(addmat_out[i],addmat_out[i],mapout_1d,outW*outH);
+			mapout = cov(covL->mapData[i][j], kernel_size1, inputData, inSize, full);
+			addmat(covL->v[i], covL->v[i], outSize, mapout, outSize);
 		}
-		MaxPooling_noreshape(covL->v[i],addmat_out[i],outW,covL->basicData[i]);
-		for (r = 0; r < outW_p; r++)
+		for (r = 0; r < outSize.r; r++)
 		{
-			for (c = 0; c < outH_p; c++)
+			for (c = 0; c < outSize.c; c++)
 			{
-				covL->y[i][r][c] = activation_relu(covL->v[i][r][c], covL->basicData[i]);
-				covL->y[i][r][c] = covL->y[i][r][c]>>10;
+				covL->y[i][r][c] = covL->v[i][r][c]>>10;
+				covL->y[i][r][c] = activation_relu(covL->y[i][r][c], covL->basicData[i]);
+				
+				//printf("%f\n", covL->y[i][r][c]);
 			}
 		}
+		//printf("\n");
 	}
+
 
 	for (i = (outChannels - 1); i != (-1); i--)
 	{
@@ -701,7 +556,7 @@ covL->mapData[5][0][2][2]=231;
 	free(covL->mapData);
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		for (r = 0; r < outH_p; r++)
+		for (r = 0; r < outH; r++)
 		{
 			free(covL->v[j][r]);
 		}
@@ -710,10 +565,17 @@ covL->mapData[5][0][2][2]=231;
 	free(covL->v);
 	free(covL->basicData);
 
+	//end = clock();
+	// end = time(NULL);
+	//ori fprintf(stderr, "conv time = %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
+	//printf("start=%d,end=%d",start,end);
+	//printf("conv time = %d seconds\n", (int)(end - start) / CLOCKS_PER_SEC);
 	return covL->y;
 }
 int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels)
 {
+	// clock_t start, end;
+	// start = clock();
 
 	int** mapout;
 	int i, j, c, r;
@@ -732,6 +594,7 @@ int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, i
 			for (r = (kernel_size - 1); r != (-1); r--)
 			{
 				covL->mapData[i][j][r] = (int*)malloc(kernel_size * sizeof(int));
+				//printf("mapdata= %p\n", covL->mapData[i][j][r][c]);
 			}
 		}
 	}
@@ -740,568 +603,159 @@ int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, i
 	
 	int outW = inputWidth - kernel_size + 1;
 	int outH = inputHeight - kernel_size + 1;
-	int outW_p,outH_p;
-	if(outW%2==0){
-		outW_p = outW/2; 
-		outH_p = outH/2;
-	}
-	else{
-		outW_p = (outW+1)/2;
-		outH_p = (outH+2)/2;
-	}
 	covL->v = (int***)malloc(sizeof(int**) * (outChannels));
 	covL->y = (int***)malloc(sizeof(int**) * (outChannels));
-
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		covL->v[j] = (int**)malloc(sizeof(int*) * outH_p);
-		covL->y[j] = (int**)malloc(sizeof(int*) * outH_p);
-		for (r = 0; r < outH_p; r++)
+		covL->v[j] = (int**)malloc(sizeof(int*) * outH);
+		covL->y[j] = (int**)malloc(sizeof(int*) * outH);
+		for (r = 0; r < outH; r++)
 			//for (r = outH-1; r != (-1); r--)
 		{
-			covL->v[j][r] = (int*)calloc(outW_p, sizeof(int));
-			covL->y[j][r] = (int*)calloc(outW_p, sizeof(int));
+			covL->v[j][r] = (int*)calloc(outW, sizeof(int));
+			covL->y[j][r] = (int*)calloc(outW, sizeof(int));
 		}
 	}
 
 
-	//read_file_conv(Filename, outChannels, inChannels, kernel_size, kernel_size, covL);
-// covL->mapData[0][0][0][0]=-300;
-// covL->mapData[0][0][0][1]=-21;
-// covL->mapData[0][0][0][2]=-161;
-// covL->mapData[0][0][1][0]=-106;
-// covL->mapData[0][0][1][1]=50;
-// covL->mapData[0][0][1][2]=-95;
-// covL->mapData[0][0][2][0]=-101;
-// covL->mapData[0][0][2][1]=-44;
-// covL->mapData[0][0][2][2]=1;
-// covL->mapData[0][1][0][0]=172;
-// covL->mapData[0][1][0][1]=8;
-// covL->mapData[0][1][0][2]=-124;
-// covL->mapData[0][1][1][0]=-31;
-// covL->mapData[0][1][1][1]=129;
-// covL->mapData[0][1][1][2]=-208;
-// covL->mapData[0][1][2][0]=-26;
-// covL->mapData[0][1][2][1]=-47;
-// covL->mapData[0][1][2][2]=-216;
-// covL->mapData[0][2][0][0]=-65;
-// covL->mapData[0][2][0][1]=72;
-// covL->mapData[0][2][0][2]=237;
-// covL->mapData[0][2][1][0]=113;
-// covL->mapData[0][2][1][1]=-22;
-// covL->mapData[0][2][1][2]=140;
-// covL->mapData[0][2][2][0]=127;
-// covL->mapData[0][2][2][1]=46;
-// covL->mapData[0][2][2][2]=85;
-// covL->mapData[0][3][0][0]=-48;
-// covL->mapData[0][3][0][1]=108;
-// covL->mapData[0][3][0][2]=-61;
-// covL->mapData[0][3][1][0]=50;
-// covL->mapData[0][3][1][1]=3;
-// covL->mapData[0][3][1][2]=-157;
-// covL->mapData[0][3][2][0]=115;
-// covL->mapData[0][3][2][1]=-57;
-// covL->mapData[0][3][2][2]=-181;
-// covL->mapData[0][4][0][0]=-185;
-// covL->mapData[0][4][0][1]=-66;
-// covL->mapData[0][4][0][2]=69;
-// covL->mapData[0][4][1][0]=-8;
-// covL->mapData[0][4][1][1]=175;
-// covL->mapData[0][4][1][2]=9;
-// covL->mapData[0][4][2][0]=166;
-// covL->mapData[0][4][2][1]=50;
-// covL->mapData[0][4][2][2]=76;
-// covL->mapData[0][5][0][0]=308;
-// covL->mapData[0][5][0][1]=107;
-// covL->mapData[0][5][0][2]=20;
-// covL->mapData[0][5][1][0]=64;
-// covL->mapData[0][5][1][1]=-87;
-// covL->mapData[0][5][1][2]=-154;
-// covL->mapData[0][5][2][0]=-82;
-// covL->mapData[0][5][2][1]=-422;
-// covL->mapData[0][5][2][2]=-141;
-// covL->mapData[1][0][0][0]=104;
-// covL->mapData[1][0][0][1]=-2;
-// covL->mapData[1][0][0][2]=-213;
-// covL->mapData[1][0][1][0]=178;
-// covL->mapData[1][0][1][1]=-151;
-// covL->mapData[1][0][1][2]=-291;
-// covL->mapData[1][0][2][0]=-13;
-// covL->mapData[1][0][2][1]=-190;
-// covL->mapData[1][0][2][2]=26;
-// covL->mapData[1][1][0][0]=164;
-// covL->mapData[1][1][0][1]=202;
-// covL->mapData[1][1][0][2]=-177;
-// covL->mapData[1][1][1][0]=-163;
-// covL->mapData[1][1][1][1]=-171;
-// covL->mapData[1][1][1][2]=135;
-// covL->mapData[1][1][2][0]=244;
-// covL->mapData[1][1][2][1]=333;
-// covL->mapData[1][1][2][2]=152;
-// covL->mapData[1][2][0][0]=-61;
-// covL->mapData[1][2][0][1]=-212;
-// covL->mapData[1][2][0][2]=-180;
-// covL->mapData[1][2][1][0]=228;
-// covL->mapData[1][2][1][1]=-186;
-// covL->mapData[1][2][1][2]=80;
-// covL->mapData[1][2][2][0]=67;
-// covL->mapData[1][2][2][1]=188;
-// covL->mapData[1][2][2][2]=252;
-// covL->mapData[1][3][0][0]=208;
-// covL->mapData[1][3][0][1]=-149;
-// covL->mapData[1][3][0][2]=-51;
-// covL->mapData[1][3][1][0]=-115;
-// covL->mapData[1][3][1][1]=-276;
-// covL->mapData[1][3][1][2]=60;
-// covL->mapData[1][3][2][0]=-19;
-// covL->mapData[1][3][2][1]=21;
-// covL->mapData[1][3][2][2]=33;
-// covL->mapData[1][4][0][0]=-41;
-// covL->mapData[1][4][0][1]=0;
-// covL->mapData[1][4][0][2]=-56;
-// covL->mapData[1][4][1][0]=114;
-// covL->mapData[1][4][1][1]=-2;
-// covL->mapData[1][4][1][2]=72;
-// covL->mapData[1][4][2][0]=-118;
-// covL->mapData[1][4][2][1]=-103;
-// covL->mapData[1][4][2][2]=114;
-// covL->mapData[1][5][0][0]=93;
-// covL->mapData[1][5][0][1]=3;
-// covL->mapData[1][5][0][2]=315;
-// covL->mapData[1][5][1][0]=-404;
-// covL->mapData[1][5][1][1]=-334;
-// covL->mapData[1][5][1][2]=301;
-// covL->mapData[1][5][2][0]=-226;
-// covL->mapData[1][5][2][1]=149;
-// covL->mapData[1][5][2][2]=77;
-// covL->mapData[2][0][0][0]=-123;
-// covL->mapData[2][0][0][1]=-147;
-// covL->mapData[2][0][0][2]=-107;
-// covL->mapData[2][0][1][0]=57;
-// covL->mapData[2][0][1][1]=168;
-// covL->mapData[2][0][1][2]=-39;
-// covL->mapData[2][0][2][0]=12;
-// covL->mapData[2][0][2][1]=127;
-// covL->mapData[2][0][2][2]=86;
-// covL->mapData[2][1][0][0]=104;
-// covL->mapData[2][1][0][1]=126;
-// covL->mapData[2][1][0][2]=124;
-// covL->mapData[2][1][1][0]=-62;
-// covL->mapData[2][1][1][1]=40;
-// covL->mapData[2][1][1][2]=-132;
-// covL->mapData[2][1][2][0]=-274;
-// covL->mapData[2][1][2][1]=-247;
-// covL->mapData[2][1][2][2]=-174;
-// covL->mapData[2][2][0][0]=-13;
-// covL->mapData[2][2][0][1]=55;
-// covL->mapData[2][2][0][2]=80;
-// covL->mapData[2][2][1][0]=162;
-// covL->mapData[2][2][1][1]=15;
-// covL->mapData[2][2][1][2]=-202;
-// covL->mapData[2][2][2][0]=-82;
-// covL->mapData[2][2][2][1]=79;
-// covL->mapData[2][2][2][2]=86;
-// covL->mapData[2][3][0][0]=8;
-// covL->mapData[2][3][0][1]=35;
-// covL->mapData[2][3][0][2]=134;
-// covL->mapData[2][3][1][0]=108;
-// covL->mapData[2][3][1][1]=95;
-// covL->mapData[2][3][1][2]=36;
-// covL->mapData[2][3][2][0]=-96;
-// covL->mapData[2][3][2][1]=-52;
-// covL->mapData[2][3][2][2]=212;
-// covL->mapData[2][4][0][0]=-188;
-// covL->mapData[2][4][0][1]=30;
-// covL->mapData[2][4][0][2]=-142;
-// covL->mapData[2][4][1][0]=-84;
-// covL->mapData[2][4][1][1]=-113;
-// covL->mapData[2][4][1][2]=-105;
-// covL->mapData[2][4][2][0]=267;
-// covL->mapData[2][4][2][1]=170;
-// covL->mapData[2][4][2][2]=175;
-// covL->mapData[2][5][0][0]=14;
-// covL->mapData[2][5][0][1]=36;
-// covL->mapData[2][5][0][2]=-82;
-// covL->mapData[2][5][1][0]=-161;
-// covL->mapData[2][5][1][1]=-61;
-// covL->mapData[2][5][1][2]=65;
-// covL->mapData[2][5][2][0]=73;
-// covL->mapData[2][5][2][1]=33;
-// covL->mapData[2][5][2][2]=384;
-// covL->mapData[3][0][0][0]=37;
-// covL->mapData[3][0][0][1]=-16;
-// covL->mapData[3][0][0][2]=-6;
-// covL->mapData[3][0][1][0]=-20;
-// covL->mapData[3][0][1][1]=103;
-// covL->mapData[3][0][1][2]=17;
-// covL->mapData[3][0][2][0]=-395;
-// covL->mapData[3][0][2][1]=-707;
-// covL->mapData[3][0][2][2]=-446;
-// covL->mapData[3][1][0][0]=85;
-// covL->mapData[3][1][0][1]=217;
-// covL->mapData[3][1][0][2]=221;
-// covL->mapData[3][1][1][0]=95;
-// covL->mapData[3][1][1][1]=-12;
-// covL->mapData[3][1][1][2]=-389;
-// covL->mapData[3][1][2][0]=-276;
-// covL->mapData[3][1][2][1]=-106;
-// covL->mapData[3][1][2][2]=150;
-// covL->mapData[3][2][0][0]=222;
-// covL->mapData[3][2][0][1]=36;
-// covL->mapData[3][2][0][2]=152;
-// covL->mapData[3][2][1][0]=-216;
-// covL->mapData[3][2][1][1]=185;
-// covL->mapData[3][2][1][2]=114;
-// covL->mapData[3][2][2][0]=-262;
-// covL->mapData[3][2][2][1]=-284;
-// covL->mapData[3][2][2][2]=-293;
-// covL->mapData[3][3][0][0]=67;
-// covL->mapData[3][3][0][1]=44;
-// covL->mapData[3][3][0][2]=22;
-// covL->mapData[3][3][1][0]=283;
-// covL->mapData[3][3][1][1]=294;
-// covL->mapData[3][3][1][2]=-159;
-// covL->mapData[3][3][2][0]=135;
-// covL->mapData[3][3][2][1]=-108;
-// covL->mapData[3][3][2][2]=-245;
-// covL->mapData[3][4][0][0]=-69;
-// covL->mapData[3][4][0][1]=123;
-// covL->mapData[3][4][0][2]=101;
-// covL->mapData[3][4][1][0]=-21;
-// covL->mapData[3][4][1][1]=94;
-// covL->mapData[3][4][1][2]=-34;
-// covL->mapData[3][4][2][0]=-570;
-// covL->mapData[3][4][2][1]=-300;
-// covL->mapData[3][4][2][2]=-325;
-// covL->mapData[3][5][0][0]=217;
-// covL->mapData[3][5][0][1]=16;
-// covL->mapData[3][5][0][2]=-50;
-// covL->mapData[3][5][1][0]=-13;
-// covL->mapData[3][5][1][1]=235;
-// covL->mapData[3][5][1][2]=-344;
-// covL->mapData[3][5][2][0]=592;
-// covL->mapData[3][5][2][1]=592;
-// covL->mapData[3][5][2][2]=414;
-// covL->mapData[4][0][0][0]=-26;
-// covL->mapData[4][0][0][1]=8;
-// covL->mapData[4][0][0][2]=284;
-// covL->mapData[4][0][1][0]=-24;
-// covL->mapData[4][0][1][1]=171;
-// covL->mapData[4][0][1][2]=185;
-// covL->mapData[4][0][2][0]=322;
-// covL->mapData[4][0][2][1]=0;
-// covL->mapData[4][0][2][2]=-502;
-// covL->mapData[4][1][0][0]=-77;
-// covL->mapData[4][1][0][1]=253;
-// covL->mapData[4][1][0][2]=349;
-// covL->mapData[4][1][1][0]=-336;
-// covL->mapData[4][1][1][1]=-61;
-// covL->mapData[4][1][1][2]=243;
-// covL->mapData[4][1][2][0]=253;
-// covL->mapData[4][1][2][1]=227;
-// covL->mapData[4][1][2][2]=-26;
-// covL->mapData[4][2][0][0]=-241;
-// covL->mapData[4][2][0][1]=-303;
-// covL->mapData[4][2][0][2]=46;
-// covL->mapData[4][2][1][0]=66;
-// covL->mapData[4][2][1][1]=-212;
-// covL->mapData[4][2][1][2]=199;
-// covL->mapData[4][2][2][0]=-19;
-// covL->mapData[4][2][2][1]=-107;
-// covL->mapData[4][2][2][2]=-375;
-// covL->mapData[4][3][0][0]=-70;
-// covL->mapData[4][3][0][1]=15;
-// covL->mapData[4][3][0][2]=156;
-// covL->mapData[4][3][1][0]=-83;
-// covL->mapData[4][3][1][1]=-72;
-// covL->mapData[4][3][1][2]=181;
-// covL->mapData[4][3][2][0]=152;
-// covL->mapData[4][3][2][1]=-369;
-// covL->mapData[4][3][2][2]=-218;
-// covL->mapData[4][4][0][0]=48;
-// covL->mapData[4][4][0][1]=-300;
-// covL->mapData[4][4][0][2]=57;
-// covL->mapData[4][4][1][0]=-158;
-// covL->mapData[4][4][1][1]=-229;
-// covL->mapData[4][4][1][2]=266;
-// covL->mapData[4][4][2][0]=-59;
-// covL->mapData[4][4][2][1]=-61;
-// covL->mapData[4][4][2][2]=-501;
-// covL->mapData[4][5][0][0]=-862;
-// covL->mapData[4][5][0][1]=-32;
-// covL->mapData[4][5][0][2]=-136;
-// covL->mapData[4][5][1][0]=138;
-// covL->mapData[4][5][1][1]=-251;
-// covL->mapData[4][5][1][2]=122;
-// covL->mapData[4][5][2][0]=107;
-// covL->mapData[4][5][2][1]=-93;
-// covL->mapData[4][5][2][2]=373;
-// covL->mapData[5][0][0][0]=255;
-// covL->mapData[5][0][0][1]=257;
-// covL->mapData[5][0][0][2]=30;
-// covL->mapData[5][0][1][0]=58;
-// covL->mapData[5][0][1][1]=99;
-// covL->mapData[5][0][1][2]=83;
-// covL->mapData[5][0][2][0]=-35;
-// covL->mapData[5][0][2][1]=78;
-// covL->mapData[5][0][2][2]=117;
-// covL->mapData[5][1][0][0]=-211;
-// covL->mapData[5][1][0][1]=-66;
-// covL->mapData[5][1][0][2]=98;
-// covL->mapData[5][1][1][0]=-194;
-// covL->mapData[5][1][1][1]=-88;
-// covL->mapData[5][1][1][2]=-44;
-// covL->mapData[5][1][2][0]=8;
-// covL->mapData[5][1][2][1]=88;
-// covL->mapData[5][1][2][2]=21;
-// covL->mapData[5][2][0][0]=50;
-// covL->mapData[5][2][0][1]=68;
-// covL->mapData[5][2][0][2]=-84;
-// covL->mapData[5][2][1][0]=-132;
-// covL->mapData[5][2][1][1]=-144;
-// covL->mapData[5][2][1][2]=4;
-// covL->mapData[5][2][2][0]=152;
-// covL->mapData[5][2][2][1]=130;
-// covL->mapData[5][2][2][2]=15;
-// covL->mapData[5][3][0][0]=98;
-// covL->mapData[5][3][0][1]=276;
-// covL->mapData[5][3][0][2]=-66;
-// covL->mapData[5][3][1][0]=12;
-// covL->mapData[5][3][1][1]=2;
-// covL->mapData[5][3][1][2]=151;
-// covL->mapData[5][3][2][0]=106;
-// covL->mapData[5][3][2][1]=107;
-// covL->mapData[5][3][2][2]=28;
-// covL->mapData[5][4][0][0]=67;
-// covL->mapData[5][4][0][1]=121;
-// covL->mapData[5][4][0][2]=-16;
-// covL->mapData[5][4][1][0]=121;
-// covL->mapData[5][4][1][1]=41;
-// covL->mapData[5][4][1][2]=58;
-// covL->mapData[5][4][2][0]=-187;
-// covL->mapData[5][4][2][1]=103;
-// covL->mapData[5][4][2][2]=-58;
-// covL->mapData[5][5][0][0]=162;
-// covL->mapData[5][5][0][1]=65;
-// covL->mapData[5][5][0][2]=195;
-// covL->mapData[5][5][1][0]=-54;
-// covL->mapData[5][5][1][1]=145;
-// covL->mapData[5][5][1][2]=2;
-// covL->mapData[5][5][2][0]=209;
-// covL->mapData[5][5][2][1]=-168;
-// covL->mapData[5][5][2][2]=-112;
-// covL->mapData[6][0][0][0]=-214;
-// covL->mapData[6][0][0][1]=-95;
-// covL->mapData[6][0][0][2]=-260;
-// covL->mapData[6][0][1][0]=-30;
-// covL->mapData[6][0][1][1]=-156;
-// covL->mapData[6][0][1][2]=27;
-// covL->mapData[6][0][2][0]=239;
-// covL->mapData[6][0][2][1]=140;
-// covL->mapData[6][0][2][2]=289;
-// covL->mapData[6][1][0][0]=-531;
-// covL->mapData[6][1][0][1]=-875;
-// covL->mapData[6][1][0][2]=137;
-// covL->mapData[6][1][1][0]=463;
-// covL->mapData[6][1][1][1]=132;
-// covL->mapData[6][1][1][2]=-43;
-// covL->mapData[6][1][2][0]=540;
-// covL->mapData[6][1][2][1]=546;
-// covL->mapData[6][1][2][2]=-53;
-// covL->mapData[6][2][0][0]=-183;
-// covL->mapData[6][2][0][1]=-183;
-// covL->mapData[6][2][0][2]=-285;
-// covL->mapData[6][2][1][0]=77;
-// covL->mapData[6][2][1][1]=22;
-// covL->mapData[6][2][1][2]=-345;
-// covL->mapData[6][2][2][0]=162;
-// covL->mapData[6][2][2][1]=-80;
-// covL->mapData[6][2][2][2]=-248;
-// covL->mapData[6][3][0][0]=-249;
-// covL->mapData[6][3][0][1]=2;
-// covL->mapData[6][3][0][2]=248;
-// covL->mapData[6][3][1][0]=1;
-// covL->mapData[6][3][1][1]=3;
-// covL->mapData[6][3][1][2]=-321;
-// covL->mapData[6][3][2][0]=68;
-// covL->mapData[6][3][2][1]=230;
-// covL->mapData[6][3][2][2]=75;
-// covL->mapData[6][4][0][0]=-173;
-// covL->mapData[6][4][0][1]=36;
-// covL->mapData[6][4][0][2]=164;
-// covL->mapData[6][4][1][0]=75;
-// covL->mapData[6][4][1][1]=15;
-// covL->mapData[6][4][1][2]=-196;
-// covL->mapData[6][4][2][0]=83;
-// covL->mapData[6][4][2][1]=-50;
-// covL->mapData[6][4][2][2]=-122;
-// covL->mapData[6][5][0][0]=436;
-// covL->mapData[6][5][0][1]=320;
-// covL->mapData[6][5][0][2]=-679;
-// covL->mapData[6][5][1][0]=139;
-// covL->mapData[6][5][1][1]=165;
-// covL->mapData[6][5][1][2]=63;
-// covL->mapData[6][5][2][0]=-200;
-// covL->mapData[6][5][2][1]=-164;
-// covL->mapData[6][5][2][2]=141;
-// covL->mapData[7][0][0][0]=-12;
-// covL->mapData[7][0][0][1]=-32;
-// covL->mapData[7][0][0][2]=226;
-// covL->mapData[7][0][1][0]=-95;
-// covL->mapData[7][0][1][1]=103;
-// covL->mapData[7][0][1][2]=109;
-// covL->mapData[7][0][2][0]=-39;
-// covL->mapData[7][0][2][1]=140;
-// covL->mapData[7][0][2][2]=166;
-// covL->mapData[7][1][0][0]=72;
-// covL->mapData[7][1][0][1]=108;
-// covL->mapData[7][1][0][2]=446;
-// covL->mapData[7][1][1][0]=22;
-// covL->mapData[7][1][1][1]=-83;
-// covL->mapData[7][1][1][2]=173;
-// covL->mapData[7][1][2][0]=-162;
-// covL->mapData[7][1][2][1]=-69;
-// covL->mapData[7][1][2][2]=81;
-// covL->mapData[7][2][0][0]=-294;
-// covL->mapData[7][2][0][1]=-103;
-// covL->mapData[7][2][0][2]=207;
-// covL->mapData[7][2][1][0]=-162;
-// covL->mapData[7][2][1][1]=96;
-// covL->mapData[7][2][1][2]=-25;
-// covL->mapData[7][2][2][0]=-56;
-// covL->mapData[7][2][2][1]=290;
-// covL->mapData[7][2][2][2]=69;
-// covL->mapData[7][3][0][0]=236;
-// covL->mapData[7][3][0][1]=146;
-// covL->mapData[7][3][0][2]=52;
-// covL->mapData[7][3][1][0]=78;
-// covL->mapData[7][3][1][1]=208;
-// covL->mapData[7][3][1][2]=-69;
-// covL->mapData[7][3][2][0]=75;
-// covL->mapData[7][3][2][1]=229;
-// covL->mapData[7][3][2][2]=164;
-// covL->mapData[7][4][0][0]=-173;
-// covL->mapData[7][4][0][1]=-112;
-// covL->mapData[7][4][0][2]=-95;
-// covL->mapData[7][4][1][0]=-155;
-// covL->mapData[7][4][1][1]=-94;
-// covL->mapData[7][4][1][2]=195;
-// covL->mapData[7][4][2][0]=-10;
-// covL->mapData[7][4][2][1]=-8;
-// covL->mapData[7][4][2][2]=249;
-// covL->mapData[7][5][0][0]=-369;
-// covL->mapData[7][5][0][1]=-133;
-// covL->mapData[7][5][0][2]=-400;
-// covL->mapData[7][5][1][0]=134;
-// covL->mapData[7][5][1][1]=-386;
-// covL->mapData[7][5][1][2]=-87;
-// covL->mapData[7][5][2][0]=40;
-// covL->mapData[7][5][2][1]=-130;
-// covL->mapData[7][5][2][2]=-168;
-// covL->mapData[8][0][0][0]=-255;
-// covL->mapData[8][0][0][1]=-30;
-// covL->mapData[8][0][0][2]=-87;
-// covL->mapData[8][0][1][0]=68;
-// covL->mapData[8][0][1][1]=172;
-// covL->mapData[8][0][1][2]=120;
-// covL->mapData[8][0][2][0]=-102;
-// covL->mapData[8][0][2][1]=-202;
-// covL->mapData[8][0][2][2]=-73;
-// covL->mapData[8][1][0][0]=-122;
-// covL->mapData[8][1][0][1]=-210;
-// covL->mapData[8][1][0][2]=-315;
-// covL->mapData[8][1][1][0]=-421;
-// covL->mapData[8][1][1][1]=-585;
-// covL->mapData[8][1][1][2]=-315;
-// covL->mapData[8][1][2][0]=-398;
-// covL->mapData[8][1][2][1]=-562;
-// covL->mapData[8][1][2][2]=-157;
-// covL->mapData[8][2][0][0]=131;
-// covL->mapData[8][2][0][1]=-170;
-// covL->mapData[8][2][0][2]=82;
-// covL->mapData[8][2][1][0]=121;
-// covL->mapData[8][2][1][1]=28;
-// covL->mapData[8][2][1][2]=118;
-// covL->mapData[8][2][2][0]=-199;
-// covL->mapData[8][2][2][1]=60;
-// covL->mapData[8][2][2][2]=97;
-// covL->mapData[8][3][0][0]=-167;
-// covL->mapData[8][3][0][1]=-119;
-// covL->mapData[8][3][0][2]=57;
-// covL->mapData[8][3][1][0]=-99;
-// covL->mapData[8][3][1][1]=-36;
-// covL->mapData[8][3][1][2]=246;
-// covL->mapData[8][3][2][0]=-22;
-// covL->mapData[8][3][2][1]=214;
-// covL->mapData[8][3][2][2]=3;
-// covL->mapData[8][4][0][0]=50;
-// covL->mapData[8][4][0][1]=-96;
-// covL->mapData[8][4][0][2]=-51;
-// covL->mapData[8][4][1][0]=-48;
-// covL->mapData[8][4][1][1]=261;
-// covL->mapData[8][4][1][2]=83;
-// covL->mapData[8][4][2][0]=289;
-// covL->mapData[8][4][2][1]=193;
-// covL->mapData[8][4][2][2]=23;
-// covL->mapData[8][5][0][0]=-85;
-// covL->mapData[8][5][0][1]=-36;
-// covL->mapData[8][5][0][2]=238;
-// covL->mapData[8][5][1][0]=256;
-// covL->mapData[8][5][1][1]=372;
-// covL->mapData[8][5][1][2]=172;
-// covL->mapData[8][5][2][0]=219;
-// covL->mapData[8][5][2][1]=241;
-// covL->mapData[8][5][2][2]=69;
-covL->basicData[0]=-30;
-covL->basicData[1]=-8;
-covL->basicData[2]=-126;
-covL->basicData[3]=1;
-covL->basicData[4]=-14;
-covL->basicData[5]=-51;
-covL->basicData[6]=-4;
-covL->basicData[7]=-51;
-covL->basicData[8]=2;
+int covL_basicdata[16] = {-1,-78,-122,-183,212,-111,24,-78,22,\
+								-284,691,-217,242,-10,358,-53};
+
+	int covL_mapdata[16][6][3][3] = \
+{{{{194,-186,206},{43,-101,-220},{118,-205,152}},\
+{{128,-40,153},{74,-189,-118},{-92,-120,56}},\
+{{141,63,102},{-17,-168,2},{-46,-172,15}},\
+{{-515,6,-92},{263,157,114},{-30,-165,137}},\
+{{203,163,173},{1,-312,-337},{90,-313,-450}},\
+{{-62,117,115},{-16,187,207},{-340,-140,91}}},\
+{{{-217,-146,-144},{36,-45,161},{80,-182,-54}},\
+{{242,-164,-102},{355,-270,122},{333,58,-228}},\
+{{134,-4,126},{-79,80,128},{-115,5,176}},\
+{{147,91,-682},{-80,84,-117},{-139,387,260}},\
+{{316,-66,-250},{539,22,-131},{672,139,-239}},\
+{{195,-7,-334},{207,295,-182},{-387,228,56}}},\
+{{{125,-57,76},{-97,-54,-171},{-51,103,-99}},\
+{{152,64,132},{-182,181,67},{34,-25,189}},\
+{{-72,92,140},{-65,139,-144},{145,-34,108}},\
+{{157,-221,243},{183,-135,-65},{253,-267,-131}},\
+{{-35,42,166},{-76,-151,-149},{-134,-153,132}},\
+{{-131,-163,67},{214,-213,68},{61,-246,-118}}},\
+{{{3,-137,-115},{-9,90,142},{-206,6,-75}},\
+{{178,84,-241},{297,423,-60},{2,223,289}},\
+{{45,-178,75},{43,111,-33},{-156,146,117}},\
+{{-73,258,-237},{-229,172,-77},{-212,231,81}},\
+{{154,152,-171},{371,382,-78},{-234,404,-123}},\
+{{-40,302,-98},{-285,438,-90},{-369,131,-149}}},\
+{{{60,-223,-341},{-57,-278,71},{-231,-206,-7}},\
+{{-160,-185,-311},{-176,-21,-237},{-107,-98,59}},\
+{{-53,-88,-140},{-17,-57,-102},{-158,-179,-74}},\
+{{-1136,-286,55},{139,219,-54},{192,201,194}},\
+{{-447,-253,94},{-497,-300,43},{-277,-109,-39}},\
+{{-725,36,261},{119,163,375},{125,270,37}}},\
+{{{-26,18,-69},{-160,-9,73},{165,-25,93}},\
+{{60,-39,-140},{-184,130,-115},{-165,-124,131}},\
+{{-161,147,-130},{-109,-1,-92},{-124,-175,172}},\
+{{-463,-267,5},{15,-80,305},{-5,-219,269}},\
+{{128,16,-105},{-148,-100,137},{-249,128,-52}},\
+{{-346,-263,287},{-184,-278,227},{35,-27,270}}},\
+{{{-28,-113,-118},{-60,-166,-4},{-34,-9,-65}},\
+{{-226,357,-73},{-9,-142,-164},{4,-21,-28}},\
+{{62,81,-40},{-35,81,95},{-70,58,171}},\
+{{-854,-158,612},{145,260,-196},{-81,-19,-18}},\
+{{56,40,288},{120,145,283},{-195,-276,43}},\
+{{-610,244,217},{173,204,21},{139,37,-169}}},\
+{{{48,-136,-78},{169,196,28},{46,63,-197}},\
+{{146,455,-200},{-101,260,60},{-242,109,-119}},\
+{{90,66,60},{41,-172,177},{21,-93,165}},\
+{{281,-324,255},{-231,-44,-41},{163,-210,79}},\
+{{-242,485,-116},{-183,466,-105},{-123,302,-135}},\
+{{-60,-23,172},{-104,50,71},{166,-205,21}}},\
+{{{47,70,112},{-139,96,46},{135,-30,20}},\
+{{251,-149,118},{209,-60,-20},{87,194,-183}},\
+{{-126,31,-32},{77,40,144},{68,3,111}},\
+{{223,136,-251},{-126,156,-204},{68,1,5}},\
+{{212,-174,-94},{117,-58,22},{-122,-80,58}},\
+{{-89,63,-166},{61,24,-124},{-214,-227,131}}},\
+{{{-84,-71,126},{75,93,-23},{-66,81,71}},\
+{{127,-253,98},{-298,-198,-239},{-116,-159,-87}},\
+{{-106,-42,175},{9,133,107},{139,142,-4}},\
+{{131,337,-383},{-179,119,288},{-222,56,68}},\
+{{306,-72,299},{-38,-109,-318},{-53,-277,-108}},\
+{{46,369,-148},{-50,-60,247},{-31,-33,67}}},\
+{{{-64,-102,-7},{-17,-163,94},{37,28,10}},\
+{{156,-126,-188},{26,120,208},{125,-176,566}},\
+{{-48,138,132},{40,61,160},{-55,-162,16}},\
+{{-350,74,8},{134,416,81},{360,-553,-425}},\
+{{84,-21,-131},{-81,-8,388},{29,-173,493}},\
+{{26,398,77},{262,-60,-196},{49,-872,-230}}},\
+{{{-117,-6,46},{-132,235,192},{-12,-140,23}},\
+{{56,402,61},{114,293,226},{118,-389,-19}},\
+{{135,-108,58},{-127,-148,-95},{-78,40,-101}},\
+{{24,-107,563},{-445,-498,39},{474,313,-232}},\
+{{-39,478,-64},{163,222,-124},{208,-305,-145}},\
+{{-61,-61,330},{-299,-395,-323},{735,8,-256}}},\
+{{{-107,28,-8},{-142,-67,103},{-74,3,179}},\
+{{77,176,-324},{-147,127,262},{-254,-333,307}},\
+{{107,74,-160},{-91,-103,109},{-130,59,-56}},\
+{{-149,583,511},{-98,310,140},{46,-328,-482}},\
+{{-140,-44,-117},{-480,-368,-87},{-326,-490,-193}},\
+{{117,717,463},{-120,25,-142},{-246,-837,-625}}},\
+{{{141,-120,-204},{-25,-105,-57},{48,128,-55}},\
+{{-105,30,70},{-208,168,-92},{83,48,9}},\
+{{-34,-50,129},{-80,-72,147},{-85,-15,141}},\
+{{403,109,288},{68,-523,-63},{123,-329,123}},\
+{{-200,164,36},{-305,159,-144},{-227,349,-141}},\
+{{261,-123,177},{-189,-467,173},{-153,-154,275}}},\
+{{{169,-155,-19},{22,75,89},{88,135,117}},\
+{{33,98,-133},{4,-66,71},{-37,-20,126}},\
+{{124,-126,178},{155,160,-91},{148,-61,100}},\
+{{-405,-115,-185},{315,-1,-118},{196,7,7}},\
+{{36,127,-158},{-209,-178,-53},{195,194,-111}},\
+{{-513,-412,-2},{286,-185,-209},{192,7,-140}}},\
+{{{-85,155,121},{-118,141,38},{-203,54,-69}},\
+{{-168,302,-179},{-107,298,-68},{-280,184,258}},\
+{{150,-106,125},{85,178,88},{165,2,-176}},\
+{{159,85,229},{138,-107,230},{349,-447,187}},\
+{{-34,383,-90},{108,503,48},{-56,-27,46}},\
+{{149,117,13},{113,-85,131},{-34,-830,-401}}}};
 
 
-	int covL_mapdata[9][6][3][3] = {{{{-300,-21,-161},{-106,50,-95},{-101,-44,1}},{{172,8,-124},{-31,129,-208},{-26,-47,-216}},{{-65,72,237},{113,-22,140},{127,46,85}},{{-48,108,-61},{50,3,-157},{115,-57,-181}},{{-185,-66,69},{-8,175,9},{166,50,76}},{{308,107,20},{64,-87,-154},{-82,-422,-141}}},{{{104,-2,-213},{178,-151,-291},{-13,-190,26}},{{164,202,-177},{-163,-171,135},{244,333,152}},{{-61,-212,-180},{228,-186,80},{67,188,252}},{{208,-149,-51},{-115,-276,60},{-19,21,33}},{{-41,0,-56},{114,-2,72},{-118,-103,114}},{{93,3,315},{-404,-334,301},{-226,149,77}}},{{{-123,-147,-107},{57,168,-39},{12,127,86}},{{104,126,124},{-62,40,-132},{-274,-247,-174}},{{-13,55,80},{162,15,-202},{-82,79,86}},{{8,35,134},{108,95,36},{-96,-52,212}},{{-188,30,-142},{-84,-113,-105},{267,170,175}},{{14,36,-82},{-161,-61,65},{73,33,384}}},{{{37,-16,-6},{-20,103,17},{-395,-707,-446}},{{85,217,221},{95,-12,-389},{-276,-106,150}},{{222,36,152},{-216,185,114},{-262,-284,-293}},{{67,44,22},{283,294,-159},{135,-108,-245}},{{-69,123,101},{-21,94,-34},{-570,-300,-325}},{{217,16,-50},{-13,235,-344},{592,592,414}}},{{{-26,8,284},{-24,171,185},{322,0,-502}},{{-77,253,349},{-336,-61,243},{253,227,-26}},{{-241,-303,46},{66,-212,199},{-19,-107,-375}},{{-70,15,156},{-83,-72,181},{152,-369,-218}},{{48,-300,57},{-158,-229,266},{-59,-61,-501}},{{-862,-32,-136},{138,-251,122},{107,-93,373}}},{{{255,257,30},{58,99,83},{-35,78,117}},{{-211,-66,98},{-194,-88,-44},{8,88,21}},{{50,68,-84},{-132,-144,4},{152,130,15}},{{98,276,-66},{12,2,151},{106,107,28}},{{67,121,-16},{121,41,58},{-187,103,-58}},{{162,65,195},{-54,145,2},{209,-168,-112}}},{{{-214,-95,-260},{-30,-156,27},{239,140,289}},{{-531,-875,137},{463,132,-43},{540,546,-53}},{{-183,-183,-285},{77,22,-345},{162,-80,-248}},{{-249,2,248},{1,3,-321},{68,230,75}},{{-173,36,164},{75,15,-196},{83,-50,-122}},{{436,320,-679},{139,165,63},{-200,-164,141}}},{{{-12,-32,226},{-95,103,109},{-39,140,166}},{{72,108,446},{22,-83,173},{-162,-69,81}},{{-294,-103,207},{-162,96,-25},{-56,290,69}},{{236,146,52},{78,208,-69},{75,229,164}},{{-173,-112,-95},{-155,-94,195},{-10,-8,249}},{{-369,-133,-400},{134,-386,-87},{40,-130,-168}}},{{{-255,-30,-87},{68,172,120},{-102,-202,-73}},{{-122,-210,-315},{-421,-585,-315},{-398,-562,-157}},{{131,-170,82},{121,28,118},{-199,60,97}},{{-167,-119,57},{-99,-36,246},{-22,214,3}},{{50,-96,-51},{-48,261,83},{289,193,23}},{{-85,-36,238},{256,372,172},{219,241,69}}}};
-	for(int i=0;i<9;i++){
-		for(int j=0;j<6;j++){
-			for(int k=0;k<3;k++){
-				for(int l=0;l<3;l++){
+	for(int i=0;i<outChannels;i++){
+		for(int j=0;j<inChannels;j++){
+			for(int k=0;k<kernel_size;k++){
+				for(int l=0;l<kernel_size;l++){
 					covL->mapData[i][j][k][l] = covL_mapdata[i][j][k][l];
 				}
 			}
 		}
 	}
+	for(int i=0;i<outChannels;i++){
+		covL->basicData[i] = covL_basicdata[i];
+	}
+
 	nSize kernel_size1 = { kernel_size,kernel_size };
 	nSize inSize = { inputWidth,inputHeight };
 	nSize outSize = { outW,outH };
-	
-	int* mapout_1d = (int*)malloc(2*outH_p*2*outW_p * sizeof(int));
-	int** addmat_out = (int**)malloc(outChannels * sizeof(int*));
-	for(int m=0; m<outChannels; m++){
-		addmat_out[m] = (int*)malloc(2*outH_p*2*outW_p * sizeof(int));
-	}
-	
-	nSize outSize_pool = { outW_p,outH_p };
-	int relu_s = 0;
-	int relu_e = 0;
+
+
 	for (i = 0; i < (outChannels); i++)
 	{
 		for (j = 0; j < (inChannels); j++)
 		{
-			mapout_1d = conv_noreshape(inputData[j],covL->mapData[i][j],inputWidth);
-			addmat_1d(addmat_out[i],addmat_out[i],mapout_1d,2*outH_p*2*outW_p);
+			mapout = cov(covL->mapData[i][j], kernel_size1, inputData[j], inSize, full);
+			addmat(covL->v[i], covL->v[i], outSize, mapout, outSize);	
 		}
-		MaxPooling_noreshape(covL->v[i],addmat_out[i],2*outH_p,covL->basicData[i]);
-		for (r = 0; r < outH_p; r++)
+		for (r = 0; r < outSize.r; r++)
 		{
-			for (c = 0; c < outW_p; c++)
+			for (c = 0; c < outSize.c; c++)
 			{
-				covL->y[i][r][c] = activation_relu(covL->v[i][r][c], covL->basicData[i]);
-				covL->y[i][r][c] = covL->y[i][r][c]>>10;
+				covL->y[i][r][c] = covL->v[i][r][c]>>10;
+				covL->y[i][r][c] = activation_relu(covL->y[i][r][c], covL->basicData[i]);
+				
+				//printf("%f\n", covL->y[i][r][c]);
 			}
 		}
+		//printf("\n");
 	}
 
 
@@ -1320,7 +774,7 @@ covL->basicData[8]=2;
 	free(covL->mapData);
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		for (r = 0; r < outH_p; r++)
+		for (r = 0; r < outH; r++)
 		{
 			free(covL->v[j][r]);
 		}
@@ -1329,10 +783,14 @@ covL->basicData[8]=2;
 	free(covL->v);
 	free(covL->basicData);
 
+	// end = clock();
+	// fprintf(stderr, "conv time = %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
 	return covL->y;
 }
 int*** pool(int*** inputData, int inputWidth, int inputHeight, int poolType, int kernel_size, int inChannels, int outChannels, int stride)
 {
+	// clock_t start, end;
+	// start = clock();
 
 	int i;
 	int count = 0;
@@ -1368,77 +826,40 @@ int*** pool(int*** inputData, int inputWidth, int inputHeight, int poolType, int
 	for (i = 0; i < outChannels; i++)
 	{
 		MaxPooling(poolL->y[i], outSize, inputData[i], inSize, kernel_size, stride);
+		//printf("	%f\n", poolL->y[i]);
 		count++;
 	}
+
+	// end = clock();
+	// fprintf(stderr, "pool time = %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
 	return poolL->y;
 }
 
 int* flatten(int ***inputData,int inputWidth,int inputHeight,int inChannels,int outputNum)
 {
-	int i,j,r,c;
-	int temp = 0;
 
 	FlLayer* Fl = (FlLayer*)malloc(sizeof(FlLayer));
 	int w = inputWidth * inputHeight;
-	Fl->v = (int**)malloc(inChannels * sizeof(int*));
-	for (i = (inChannels - 1); i != (-1); i--)
-	{
-		Fl->v[i]=(int*)calloc(w,sizeof(int));
-	}
+
 	Fl->y = (int*)calloc(outputNum,sizeof(int));
 
 	nSize inSize = { inputWidth,inputHeight };	
-	int k = 0;
-	int l = 0;
 
-	for (j = 0; j < inChannels; j++)//16
-	{
-		
-		for (r = 0; r < inSize.r; r++)
-		{
-			
-			for (c = 0; c < inSize.c; c++)
-			{
-				Fl->v[j][l] = inputData[j][r][c];
+
+	for(int i=0; i<inChannels; i++){
+		for(int j=0; j<inSize.r; j++){
+			for(int k=0; k<inSize.c; k++){
 				
-				l++;
+				Fl->y[i*inSize.c*inSize.r + j*inSize.c + k] = inputData[i][j][k];
+				//printf("y[%d]=input[%d][%d][%d]\t",i*inSize.r*inSize.c + j*inSize.c + k,k,i,j);
 			}
 		}
-		l = 0;
 	}
-
-
-	for (int p = 0; p < inChannels; p++)
-	{
-		for (int d = p; d < w; d++)
-		{
-			temp = Fl->v[p][d];
-			Fl->v[p][d] = Fl->v[d][p];
-			Fl->v[d][p] = temp;
-			
-			
-		}
-	}
-	for (int p = 0; p < inChannels; p++)
-	{
-		for (int d = 0; d < w; d++)
-		{
-			
-			Fl->y[k] = Fl->v[p][d];
-			//printf(" Fl->y[%d]= %f\n", k, Fl->y[k]);
-			k++;
-		}
-	}
-
-	for (i = (inChannels - 1); i != (-1); i--)
-	{
-		free(Fl->v[i]);
-	}
-	free(Fl->v);
 
 	return Fl->y;
 }
-int* fc(int* inputData, char* filename, int inputNum, int outputNum)
+
+int* fc1(int* inputData, char* filename, int inputNum, int outputNum)
 {
 	int i, j, k;
 	FcLayer* FcL = (FcLayer*)malloc(sizeof(FcLayer));
@@ -1450,3699 +871,151 @@ int* fc(int* inputData, char* filename, int inputNum, int outputNum)
 	FcL->basicData = (int*)calloc(outputNum, sizeof(int));
 	FcL->y = (int*)calloc(outputNum, sizeof(int));
 
+	int FcL_wdata[120][576] = {{-78,64,-64,44,113,-11,-14,44,-38,-84,25,-34,29,91,-7,3,-42,84,12,-66,-70,36,-74,-23,-24,-44,-36,2,-30,-8,-43,-13,53,-55,-79,84,-46,55,120,62,-9,186,-57,39,-43,91,22,34,9,-120,39,102,-34,27,-29,46,58,-44,40,20,-96,45,32,-25,-96,-11,91,-69,106,-120,-59,75,48,64,99,-56,50,-73,47,72,47,61,75,30,-25,-44,58,88,-5,64,29,69,82,-48,34,51,13,-36,-0,16,26,84,79,-1,-4,-40,-26,-82,-49,-14,44,2,52,-50,-99,-24,-5,-80,-29,39,92,5,-5,-22,58,-39,124,1,-109,85,18,53,92,-10,-16,-156,-40,72,14,-104,-3,-94,5,114,-147,-135,-89,5,73,198,-83,65,104,-67,-48,133,23,-28,-43,-166,-7,-2,74,125,-113,15,42,132,25,-5,112,25,-65,-23,86,-5,-65,26,82,64,-35,86,-35,98,24,122,-27,46,81,66,32,64,59,-53,1,12,33,35,-99,8,31,16,-25,-37,-107,57,29,-91,-15,18,-95,-24,-55,90,-40,-69,-143,-42,27,-51,46,17,-143,61,-26,18,-10,185,-109,5,7,-49,46,125,-50,-81,19,15,-13,-69,-70,-57,65,71,1,-48,-68,-96,-45,-45,53,-27,-68,1,-33,50,61,110,-61,93,115,4,49,123,-102,45,-68,63,-49,72,-81,21,36,87,-75,39,-116,14,-44,32,-39,-85,-84,11,28,65,146,-44,12,-4,39,102,-6,-37,64,84,47,95,-8,65,9,-75,28,36,18,-83,11,51,71,-52,-111,-6,24,-10,28,-17,43,3,7,-79,61,93,41,18,30,-12,32,-23,118,156,-106,-72,-24,108,-88,1,-86,-49,15,80,-66,17,86,47,-47,-85,-54,91,147,-4,-66,-31,-114,-61,-76,0,88,-102,-98,48,101,-9,-34,20,13,-5,-41,112,57,-43,-46,42,10,56,-3,-64,2,37,-7,-9,-16,24,-28,57,27,-42,-7,98,-93,22,85,-66,95,82,20,-32,-84,-107,36,124,-133,-98,1,-26,-23,118,-93,-51,10,86,16,35,-35,-47,19,-27,110,73,-106,-10,-95,-2,42,16,49,-51,43,15,13,-70,19,-9,84,-31,26,59,41,30,-80,47,114,86,136,112,6,-46,97,-87,77,-14,-8,70,40,77,-36,27,123,-55,-124,138,-24,28,-11,-7,7,-104,-4,1,-19,10,-80,-87,-55,-66,-21,7,-42,72,-34,73,3,4,-117,50,-58,87,-79,-82,-38,81,-10,-112,37,39,-60,0,109,61,-98,-41,-106,132,-23,83,17,-65,52,46,-33,-100,19,-46,-68,-45,-17,-153,-50,30,-40,122,31,3,113,-10,60,-2,-64,63,6,104,-61,-12,63,-97,27,94,2,0,-21,20,-61,91,-24,-3,78,-60,-23,-33,33,-40,-88,-13,55,-60,3,-66,91,73,60,92,23,-25,-75,-129,30,-44,-103,106,-41,6,-5,31,59,-21,14,-24},\
+{-62,-59,-36,-20,38,-53,21,-8,103,-69,66,66,34,77,89,-77,-105,31,-71,-47,108,-114,-98,-27,48,19,-40,-43,-26,-119,62,-112,-63,39,-131,-94,-29,-57,98,-101,91,-39,-17,2,-41,44,64,-16,-71,-3,-15,-91,41,-33,-45,-63,29,-55,-96,70,-73,-41,14,-189,30,45,-144,87,96,-61,2,-26,49,-5,29,-45,-2,69,16,-63,-89,-28,20,-42,80,-23,61,-89,64,57,-39,-92,47,83,49,-99,77,39,-46,1,45,-51,14,-72,68,-54,19,-35,-134,-59,112,-70,-82,66,-1,61,-34,-46,-53,-49,-7,51,12,-83,35,64,-89,39,74,-106,-82,-46,15,-24,-68,-134,-50,-124,-191,-69,-31,-161,93,29,-72,62,-2,126,-185,-39,-56,56,105,-53,-83,-60,-16,-94,41,19,-82,50,13,65,-19,62,-72,-114,80,-91,-112,95,-29,47,-24,35,-81,-39,91,-27,-50,114,29,81,58,20,50,-127,-25,-90,-80,-58,62,-110,2,-68,-5,65,65,-19,43,11,39,-53,100,-94,64,3,-76,-52,-11,44,-77,-107,-8,-53,-51,118,-91,9,9,57,47,98,84,41,-35,35,71,-22,-36,-87,-81,7,31,44,-8,37,19,31,-83,-24,-23,-53,45,-94,-110,-22,-15,-88,28,-42,-24,26,61,-48,-70,-39,-63,-3,13,-59,45,45,-7,43,-18,-30,-5,22,-1,-12,33,-57,89,19,-32,-96,76,-49,79,42,18,48,80,-9,9,-73,-17,70,-47,-18,-34,-40,48,61,-3,-19,-50,-5,47,-100,-61,37,86,35,34,57,-25,-16,83,38,12,27,49,9,59,24,82,100,71,-77,2,-4,49,-85,19,53,30,-129,22,-6,-2,-57,-22,-4,-21,83,46,103,-43,-95,-72,-72,-56,-8,-24,-33,2,-8,-43,-10,27,26,-129,72,25,-120,-26,-47,62,-104,12,80,-136,-67,-98,-33,-85,135,-69,52,70,85,-98,-94,31,-27,15,80,-21,49,-51,-109,29,23,-105,-7,-12,44,30,125,-39,-59,-72,-15,37,62,50,-122,60,-44,-87,-28,51,94,-63,-30,70,42,120,-36,99,4,14,-78,12,43,-65,-65,33,80,-115,7,-68,68,129,-93,-64,17,-78,-49,-15,-38,85,105,-107,-82,-90,29,-83,75,33,-96,-69,-30,-97,88,108,-33,-156,88,178,35,-51,-22,-40,144,30,162,53,-111,51,48,10,-75,16,36,-142,-67,68,-91,-69,-96,-28,58,6,93,14,-64,86,113,7,-121,13,-3,80,-47,49,31,106,-27,68,21,-28,-53,3,-34,37,46,-22,-67,-51,-17,-39,-20,99,-27,11,90,-64,-2,6,-91,30,112,-9,-78,-23,57,29,-20,47,-20,-30,49,-72,-94,-12,59,53,-38,-30,80,-61,-78,91,37,60,-11,47,16,-31,-8,-38,58,-22,45,119,6,28,37,-66,89,46,-54,129,-2,-13,-83,129,0,53,5,25,64,6,-87,-52,17,-41,-21,-29,-70,73,-27},\
+{109,-121,-118,-22,-84,89,53,74,-44,-19,9,-60,113,93,-22,47,-80,-33,-62,-38,48,63,94,-32,178,-69,-58,32,-65,1,145,43,-69,-165,106,-75,47,125,-70,-36,-82,-85,-31,5,72,64,53,-28,-113,-67,-24,32,-26,-39,-88,-79,-48,106,-1,-40,-43,98,99,40,121,-23,-99,-8,-122,101,177,-83,0,-50,-103,-37,-42,87,47,-82,26,-0,-81,-9,-3,-55,53,39,-75,-62,5,-12,-77,-21,50,-88,48,73,-43,-1,26,1,12,61,9,-59,-71,63,10,-15,-46,14,59,-106,51,75,55,-11,71,-125,-40,61,44,-62,16,-82,-20,145,32,-58,49,-147,-44,-35,51,-45,-16,-1,-47,-67,-1,-151,-66,50,141,37,-54,52,6,55,61,-13,-152,-65,49,64,42,-38,-116,64,58,-128,-42,27,-19,-85,50,-58,51,-31,-77,-45,78,18,-12,28,71,-74,-46,10,7,39,-11,-76,-19,-68,-38,-68,-10,-3,112,-26,40,27,71,-1,45,-115,-58,24,-93,-88,57,60,80,0,-129,-57,-51,-65,-18,6,-108,-103,37,-52,80,-208,7,53,121,84,44,65,-20,-74,51,-57,58,-34,-47,18,20,-90,-11,2,25,-119,9,-16,75,16,-19,-25,97,52,95,101,75,81,44,-0,0,1,-55,-9,31,73,-51,62,91,44,22,71,88,40,62,17,80,24,119,-10,-96,-7,-34,90,-35,66,-87,-1,-7,-79,139,-129,78,-36,-126,45,-59,-49,10,-104,-7,-35,-37,5,12,4,-17,19,-8,-40,-87,9,-67,-77,-10,-9,-57,17,75,-58,2,-89,58,1,84,-14,15,38,90,-32,45,59,-62,-6,-54,-40,-162,18,79,-62,-84,-9,-143,-82,-13,69,-57,-86,-111,-78,63,106,-50,46,-117,-17,58,-57,73,34,23,-91,-10,65,115,94,-37,57,85,115,6,64,100,129,88,121,27,124,-69,-79,-10,58,-23,53,-52,63,32,82,-105,53,-23,138,76,143,-43,13,-49,93,-138,-17,-45,-50,-196,-79,40,-2,24,-81,-27,-134,27,-27,12,33,-82,158,163,-22,-122,-97,11,21,-41,60,-68,1,75,-62,100,28,43,-80,107,5,40,16,-56,-20,65,87,161,-68,37,119,-75,55,158,8,7,66,32,2,99,130,-24,-47,-35,-68,73,-5,-93,-39,79,-27,134,84,22,8,134,203,-4,42,-174,-149,-41,-100,43,-16,161,92,43,-62,53,-94,23,42,50,-32,93,-101,41,67,-51,-55,17,-5,8,-16,-109,35,-33,46,35,-111,-103,-14,143,7,16,-143,-165,-29,99,18,4,72,-1,-91,81,-23,-37,-19,3,38,-12,-51,21,-17,142,-3,-67,-97,21,-55,-24,153,-18,81,44,30,-21,71,-6,50,79,0,81,111,-11,-71,-52,34,-11,-38,-42,-12,81,-13,6,-90,51,124,-110,-75,34,39,31,-69,20,12,-85,-125,89,-46,28,-59,1,-53,65,-102,30,-73,144,-19},\
+{26,-46,83,-21,-58,-13,-30,100,16,4,44,32,8,-10,11,-35,20,56,-66,-21,10,-32,51,-20,-51,-70,48,-8,89,-76,1,-39,91,15,61,-30,82,81,90,19,13,44,5,-70,31,-76,33,87,52,-114,97,-79,-94,109,-71,-2,81,90,-53,-106,-57,80,70,-64,2,-56,-104,19,8,-153,11,25,-7,-92,-12,-39,-1,37,-87,83,10,-78,-27,-7,-26,-93,65,91,-48,1,2,-45,76,-28,38,65,73,35,48,-51,-70,26,89,1,-28,-116,-56,-56,-95,-97,-60,31,124,-39,-88,-29,98,18,61,-30,-94,23,17,-7,-12,2,-125,-67,-59,-46,48,-104,83,26,28,130,-103,-18,107,-93,53,12,-107,16,57,-54,82,67,53,27,105,76,-196,31,0,9,1,56,-153,66,-1,49,-48,65,-23,48,-33,28,-95,-135,-49,8,59,-44,-110,-73,-108,29,-39,13,-101,68,-52,-36,-48,-15,25,46,-101,-119,-25,51,-63,-73,33,-60,62,-94,84,-64,-13,-34,57,74,-32,-55,-20,76,-14,40,-71,-17,44,-135,9,-56,-35,-129,28,-115,6,23,132,24,-95,-170,143,0,-14,65,-77,-58,-56,-4,9,49,39,105,14,-8,-24,58,11,68,-11,66,-10,-26,99,62,-45,-24,-77,-30,-85,15,139,57,-60,2,-61,-80,85,-15,73,-32,-14,110,16,-76,118,32,79,121,49,-14,34,-1,61,85,-2,-5,-36,10,-44,-54,-159,60,77,-59,36,-26,58,8,25,46,-27,29,-77,-65,29,-108,54,-40,6,-8,-47,-64,-89,-85,40,45,77,-92,-106,-5,78,-80,-33,38,-12,-88,31,95,-57,-66,-157,-90,-22,46,-51,116,34,-28,-78,57,21,25,24,-126,-114,24,-12,28,73,-46,-39,5,-95,51,-84,31,80,106,27,-22,36,83,-27,-55,-42,21,86,124,-35,46,98,-3,-45,38,88,88,13,37,0,141,-4,84,82,-68,94,118,-13,17,95,28,-4,-78,-19,136,31,79,-37,-40,-2,101,68,-15,-28,3,99,-57,77,11,-29,-49,63,-46,-58,-7,101,172,-41,35,12,-18,45,114,18,27,105,63,14,53,-3,62,-71,48,-37,8,-13,14,83,47,80,6,16,88,12,60,-38,77,-6,-50,-91,56,115,158,60,31,-131,16,15,87,-6,12,88,-67,53,-137,-37,47,44,21,-95,-99,-57,80,38,-16,-49,51,8,20,62,-62,95,4,-5,65,75,-41,115,90,-66,-21,46,-20,22,-49,59,45,37,-20,14,-36,-141,-77,70,-93,-42,-11,-153,4,-23,-12,-65,-9,205,-60,91,-92,48,13,28,-4,-64,2,-52,-8,96,113,71,55,7,86,98,-54,-32,-59,-10,-72,-52,-37,-36,-63,38,29,-58,-21,-108,-95,2,-109,-142,-57,-19,-35,90,80,120,-22,57,133,90,130,-34,77,-12,-83,59,44,-123,31,73,77,164,24,-123,49,-53,74,11,-65,53,-29},\
+{-22,56,8,24,-59,75,-7,-82,-93,-34,-25,-4,-73,-101,82,-39,77,-14,-70,82,-26,-67,-29,42,38,-46,-65,16,-7,-9,23,20,-78,-72,-35,-20,29,26,-26,49,34,108,9,-96,-81,53,-90,102,-12,12,-36,-78,-21,-93,63,77,-9,-91,56,12,-19,-63,64,-50,44,-43,-58,-42,40,54,19,59,21,3,24,-35,67,7,-55,50,89,68,32,29,-89,63,29,5,28,-38,-34,-56,-59,-3,74,-57,-47,-56,-90,-21,-6,59,48,41,-83,72,48,81,-38,-38,6,97,2,-70,-105,-92,50,-75,-73,52,33,69,-15,34,22,30,-48,81,35,50,37,-47,88,66,53,35,90,-54,7,55,74,-105,-85,106,-33,-80,76,-8,-8,-79,99,-32,62,70,6,48,-70,-8,45,-38,-55,42,-9,-77,48,88,-38,-87,47,38,-63,16,4,44,-66,74,91,40,-43,-64,19,35,44,21,55,91,-78,-44,98,47,-50,76,84,-37,27,-42,-81,-74,-8,-80,70,-32,-35,-69,38,-60,-28,53,-94,33,-100,31,-87,-6,-26,-14,-80,1,23,-94,-44,59,1,28,55,-67,34,35,86,11,-67,-44,-49,86,-24,-98,-22,5,-48,66,23,-23,-79,-68,41,36,-11,-102,3,-30,15,34,-22,-56,41,-3,6,-86,-84,-78,-22,91,65,82,-46,-32,-22,26,63,62,-45,51,13,-77,-2,-73,-69,62,67,-78,-39,-27,2,-75,-21,79,34,-24,-35,92,38,-63,-91,18,-68,76,81,43,-69,49,-79,-66,-40,42,63,-75,50,-57,-33,-30,92,40,-15,36,59,-29,-54,57,-86,-74,81,10,64,3,81,-89,80,68,41,26,-61,-34,26,31,-47,-80,-14,68,-42,39,48,-66,-20,6,-30,-74,20,84,-56,26,36,-89,83,-5,-36,-38,-53,49,-37,88,71,65,-92,-112,-59,11,-38,43,-20,57,21,-43,-87,-81,-65,71,60,-79,-4,-36,-9,-41,-7,-26,31,-33,29,22,-26,27,55,105,-76,5,19,35,61,63,95,41,-4,-27,-22,0,-87,-64,-29,82,-29,50,-75,-6,86,2,-52,44,2,-21,-16,24,41,82,-45,71,25,-46,-5,6,-50,-50,-39,80,-50,-97,-25,58,-80,-74,-94,-70,37,-11,15,21,-10,11,-61,-45,-12,-65,-27,-64,7,24,-26,-3,24,-95,-16,-28,-102,-31,72,-98,40,-91,31,-91,-36,-21,39,88,81,-17,-51,-24,-2,49,34,-14,-7,33,-71,18,31,52,75,11,-95,-84,-3,-54,-6,-30,-9,81,-43,-87,41,-2,-68,-65,-54,-43,28,62,-35,-53,83,45,-0,12,-35,48,51,-79,-27,-83,-68,-86,-55,93,66,-7,-49,4,35,76,-74,27,-4,68,16,13,-92,-90,-41,17,81,30,-55,21,-31,1,-74,58,-72,-93,-51,-23,-61,91,-82,4,102,-7,8,71,-70,-83,-72,-63,57,-39,50,23,-54,-47,-6,8,-71,41,-33,-107,84,89},\
+{35,-49,-7,58,24,-63,20,-4,64,71,-63,-10,35,-36,-47,-8,35,-68,-62,69,61,80,51,-37,23,83,-46,-10,-15,2,-64,43,76,55,-57,61,-50,-20,-50,168,-40,175,-106,126,-77,60,66,-13,-115,30,21,86,-4,-73,-62,-5,-61,34,14,-36,33,20,7,-83,-52,-71,-85,-10,-19,46,-72,-103,-78,57,-91,-41,-121,-31,33,-24,20,-38,-84,27,60,76,49,5,3,57,-33,50,-81,-51,-114,71,94,-62,32,58,-3,65,39,56,85,69,-53,-13,154,27,-65,29,-23,-48,36,133,-81,58,-81,19,15,80,36,-10,-116,36,-83,156,-49,-41,-81,-20,-141,101,52,-83,-14,-44,-89,54,-21,-7,-99,-15,14,-56,-117,-85,143,35,-33,-73,3,-39,-3,84,-112,-88,14,-89,-60,66,-98,56,-59,-52,6,13,-81,16,26,61,-61,-65,105,-24,-28,27,-25,57,-9,-55,-57,95,102,-72,-31,-74,61,1,79,49,-102,-47,31,-32,19,-11,-72,121,-45,-77,-27,76,88,123,-26,-63,-7,-61,67,-35,-87,-94,-36,65,110,26,33,4,205,11,-56,-105,8,-84,61,48,-22,-45,18,-43,66,-85,14,53,59,-97,17,-99,2,77,107,-87,-152,-93,85,-152,-93,-77,-23,-13,39,-38,125,140,-7,73,-99,-95,-27,-49,-4,40,24,-23,52,60,46,-82,-43,135,-40,-60,-69,-55,-112,-22,-16,-23,-105,41,22,-118,49,60,44,51,74,49,34,-40,-20,-24,48,-94,-68,-83,-10,-63,47,-80,-85,72,-45,89,-81,51,-8,-14,-19,64,-8,63,2,-59,53,64,81,-53,34,-64,66,-89,14,-7,-47,-42,-54,91,94,-44,-36,72,86,-43,-6,68,83,5,24,47,-102,-96,15,50,16,-140,8,-76,46,-76,-25,13,61,-50,36,-100,56,21,161,-9,36,-36,-2,80,2,-108,64,-56,-81,105,116,-8,94,31,-4,36,34,-124,-66,-134,-134,6,-14,-138,-11,-62,-162,66,37,50,98,-10,-33,155,6,-117,29,100,-15,-41,-106,38,119,45,45,99,-25,-41,-61,-72,-138,18,-57,-135,-14,-18,-55,26,-82,43,69,60,-22,33,56,52,105,30,-39,-65,34,-5,-78,-6,-27,67,8,-97,60,49,-113,67,58,-65,1,54,32,-85,22,82,106,-15,-6,138,-89,-22,29,102,-99,-133,2,31,-41,-56,-3,-4,83,-63,70,20,25,155,-118,-27,17,-61,-15,-57,61,92,-13,-71,-114,45,-53,133,117,-27,6,1,-56,42,73,-62,-92,-24,4,-45,22,55,-25,-0,-54,-23,-14,66,-80,45,-83,-18,4,63,-45,39,-26,36,-65,-99,-100,11,31,10,-53,27,9,-2,70,-13,76,92,62,8,19,33,-77,68,50,-39,-28,25,43,178,2,114,-125,-21,-16,-41,-61,9,-64,33,-20,-4,19,-19,78,-8,-6,-38,-108,114,-2,-113,6,90,-4,-110,-58,-43,31,-85,-33,69},\
+{-51,16,84,-81,68,84,-62,82,-18,-91,47,63,42,-35,91,32,-7,67,18,19,2,78,71,13,8,16,-5,4,82,-55,-11,-89,-35,-97,-79,71,58,42,-75,43,61,63,71,75,-50,-81,-12,-51,-25,67,95,-45,-89,87,86,50,30,-81,-2,-49,-19,95,-70,48,-59,-103,80,46,-84,-100,-46,-50,-62,88,-79,74,-75,57,-8,-15,-86,-76,-82,75,32,-75,-63,-85,26,-65,6,95,-16,-20,-82,-16,-47,15,-7,-85,1,-70,57,53,-64,-13,86,-75,49,49,-33,73,-10,-64,-40,-24,79,93,66,17,33,46,-72,67,94,40,76,68,-44,67,-61,-33,-20,-54,39,78,-97,35,89,-8,47,31,74,-17,23,25,25,78,-37,89,13,-93,53,-31,47,-32,-99,-42,36,-6,-88,13,73,-41,58,2,91,4,12,-66,-63,-87,74,-41,73,32,57,-31,-61,18,35,-67,-82,-95,91,10,-69,-6,62,15,-85,-1,-42,89,66,37,35,93,-88,-54,83,41,-97,58,-14,57,43,-84,24,101,3,77,18,27,38,70,38,-45,-59,-73,-87,-8,-17,-98,50,-103,-68,36,-98,32,-79,-3,93,34,-11,-16,94,65,-43,21,93,-85,-35,36,-40,5,-87,-89,-36,5,-43,59,-73,81,-89,-17,-5,44,32,30,-68,-58,3,-75,-90,-56,51,-71,55,47,3,47,-43,-73,95,-27,-45,-93,44,-72,-64,91,-70,36,-53,83,-65,-9,67,-8,-64,63,1,78,84,89,90,65,-62,-44,-12,87,76,92,-33,16,53,-84,43,7,35,10,-31,91,15,-10,-9,75,-10,-54,-82,-79,65,33,-91,-26,-84,-98,-34,27,86,41,-62,83,-12,71,25,-83,1,-87,-9,-25,80,-62,27,72,-66,70,-75,-26,42,-1,-71,-63,-14,-88,-77,62,-60,-2,10,-93,-90,52,64,-83,-35,-52,-2,82,-47,35,24,-67,-48,-22,-58,55,-14,23,49,-47,-49,-54,-62,17,-72,-79,67,-84,70,82,12,54,65,23,77,18,-20,59,-28,46,62,-11,54,39,-34,29,-66,-54,-57,89,-26,28,-40,-79,8,48,-53,38,59,-71,74,-73,11,-58,-72,-5,-20,-49,-18,58,-12,-99,15,67,64,-15,-30,-42,25,-75,21,-81,-19,94,-51,97,-76,-26,-3,48,87,-69,-64,119,9,22,-12,-33,10,40,-90,-2,-76,-41,-88,-48,-11,-21,64,-62,49,88,-69,-42,-10,50,-72,-9,45,17,96,-9,-53,77,67,87,-86,-50,86,-60,-84,9,-10,-54,-82,15,-43,-57,-87,73,64,33,47,-46,-60,83,47,48,-18,-31,-94,-68,-53,48,71,-0,92,73,7,-85,-36,83,-34,-75,23,-18,58,-73,-43,65,48,82,-87,-4,-62,92,68,-84,43,-7,-105,74,-9,73,-35,73,43,-36,11,-86,-48,34,7,-46,-46,-52,-56,-57,-12,55,-17,-48,3,-19,57,-65,41,-10,15,-85,21,-64,32,-15},\
+{12,-57,34,-33,43,-110,-100,76,57,-33,-21,-5,-9,-11,-30,33,50,-108,88,65,-22,47,80,-47,78,8,-41,-48,-23,62,-44,-51,56,-103,59,21,20,35,-89,150,-37,-65,-69,-126,-51,-47,-42,-96,-38,-14,111,147,59,19,-114,44,21,-112,12,62,-14,-15,18,43,-27,-73,93,-122,-116,46,16,-40,-12,-52,-13,-38,14,-47,41,17,90,50,-81,10,-22,73,24,-75,-128,-14,-25,-70,15,9,-134,-26,-18,-34,71,45,-13,-66,-40,60,23,-16,68,-67,-115,72,-156,-64,46,-98,1,-146,15,-23,-42,45,5,-5,-1,-27,6,-63,15,-45,-19,9,-110,-33,67,81,-38,-113,-51,25,-4,-17,-49,-6,-9,-83,89,136,84,-204,-47,-115,81,-22,-9,-29,-12,-26,50,-35,51,54,61,-25,16,-26,53,49,58,-46,-17,68,-66,-48,-3,-7,-73,27,-68,-87,45,41,105,139,-154,12,3,-53,-19,-95,-84,-94,40,25,121,24,-23,-2,13,51,89,51,2,-65,-72,-1,-16,-45,-27,61,-75,88,-32,-38,-122,-42,75,62,35,-59,-62,-1,-74,-91,101,71,-62,64,-84,14,-21,3,-0,38,-7,-79,115,-56,46,111,55,-61,-93,-34,-97,69,25,-31,-170,70,80,-42,-37,-78,13,89,-149,-77,-110,-58,79,-59,37,-62,32,-77,66,37,-44,103,-19,-8,22,97,-43,92,38,5,-12,59,57,-101,17,60,-81,-28,-48,-82,-1,47,-30,6,-87,49,-82,-95,52,84,83,-24,-63,53,-53,50,-66,-23,62,3,77,-23,-48,54,7,37,78,-8,85,95,43,-56,40,8,-63,63,81,90,28,55,-29,87,131,-185,28,-21,-14,-16,53,26,-118,14,-10,-65,-54,41,-64,63,13,5,-3,34,10,20,-85,-94,-30,40,-17,-102,-86,65,-32,23,48,49,30,141,40,110,-4,5,-32,102,50,-2,-57,-23,103,-0,-81,163,-124,134,-19,15,58,3,-11,15,-61,-50,8,79,-121,112,6,-11,87,121,61,-13,-207,-67,16,8,-68,4,18,-73,-72,95,-3,37,-8,-69,50,-23,-83,-29,60,46,29,-45,41,106,-1,-113,-23,22,112,-67,12,14,78,-55,32,112,43,8,-23,4,11,25,122,71,-94,-43,-80,86,36,34,12,-43,25,103,-79,-73,109,-30,-10,119,-63,-33,118,-197,72,-22,-57,-99,16,129,-23,89,-70,82,-89,67,-61,75,74,91,48,-106,24,2,116,-28,-92,-80,117,-77,-26,-47,62,-89,-21,-51,-64,-46,110,-117,-13,26,-8,-92,-72,6,-14,-24,-88,-50,128,7,7,89,17,12,14,16,-71,66,71,-4,61,-19,-98,-88,-52,-70,-13,101,-48,20,91,6,-47,81,51,84,-57,-2,-41,19,3,-75,68,-30,-35,-30,-4,-13,58,71,-11,-4,-27,-57,151,164,-66,-0,73,40,-32,33,-85,35,85,61,97,-94,-47,-102,28,160,-149,-19,68,-16},\
+{2,-144,136,-42,8,-33,-6,109,-126,-72,17,28,-12,-30,47,21,-34,-60,-64,-113,-23,35,-18,69,129,-119,148,82,95,42,-76,-10,-95,-110,-38,60,7,-109,-108,198,-92,-98,-53,-83,-47,120,-109,2,46,2,-59,66,24,-62,-118,-14,89,131,-20,12,102,-85,58,130,92,32,-96,-26,-5,142,-12,-58,7,81,53,39,-39,-60,100,93,-19,6,-14,5,-110,-37,-16,-53,36,-76,39,-20,-4,62,-37,99,66,-91,5,-100,41,2,37,-65,-20,-24,66,2,33,73,-106,121,-34,-112,38,131,110,-27,-7,-141,-18,9,7,57,15,-6,-10,-54,-103,-84,84,-43,136,48,-142,-15,21,56,-16,-65,7,-91,-68,-79,82,4,435,-276,172,115,-21,-47,-88,-115,129,0,-63,70,-6,-79,21,109,7,-133,-96,-145,8,-63,-5,-114,-39,-130,5,-80,-7,-23,-94,-104,-62,10,108,-73,168,-13,13,-3,-51,-117,-7,-62,47,-8,-119,-88,104,43,-57,99,8,-103,69,-5,36,-34,-103,-12,-12,21,-4,-36,-52,-109,-85,66,-29,36,-32,-153,428,-154,-28,-61,1,-6,-4,-212,20,32,-40,-107,101,40,47,16,-18,-87,-93,41,-123,-63,-22,-57,173,-39,-57,100,-90,-44,114,17,79,-58,-8,-23,-166,-91,-123,-90,-17,45,157,1,35,-106,19,-59,23,9,-126,5,-35,67,-10,137,24,80,-132,-17,77,67,114,73,17,-7,-5,-70,23,-44,59,84,4,-33,77,73,-81,-67,54,8,-81,-70,-89,-55,-42,-93,-14,49,-52,-68,-51,61,72,-57,-60,26,-103,-79,-76,-130,-62,-118,39,72,138,-72,-62,-35,31,100,-88,-208,39,-74,-88,101,-69,-21,-17,32,-22,-125,11,-27,42,86,50,76,9,-55,12,-53,-124,-71,69,92,-46,-65,70,34,23,-26,-59,14,-42,140,-127,79,-72,12,52,-0,-25,-79,24,-120,36,-5,79,116,-62,-36,-59,-16,-85,-37,-36,32,-20,99,79,55,-129,127,-204,-277,52,3,51,-43,-165,0,-86,-10,119,50,11,-10,-28,8,76,55,87,18,-76,102,125,-85,-52,-47,41,68,58,12,-67,50,102,-115,-62,82,-25,6,-96,30,-80,3,137,54,-62,-49,57,-169,-10,111,-61,81,-2,-116,-101,-70,-104,168,-27,35,-246,-76,50,-38,126,18,-124,3,-33,118,46,118,-247,-360,120,229,93,-48,13,-119,-61,41,-71,-128,195,-100,60,-65,-33,-56,12,-34,14,107,-67,79,-2,-75,-27,-87,0,52,83,-51,72,-39,4,-41,-51,-86,-109,5,68,-92,11,11,104,-3,78,74,1,48,42,61,56,35,-65,-96,-44,-57,-14,31,5,25,-82,80,-71,44,-86,-58,75,-42,-15,34,59,-20,-67,6,46,-76,52,49,-44,58,-124,-19,-26,-147,-81,-18,-152,31,77,66,-82,178,-28,58,101,67,-102,-173,109,-0,81,84,97,-21,122,307,-264,-26,121,151},\
+{2,-15,1,-40,-123,-41,6,9,-92,96,49,-77,93,-19,21,-54,46,6,18,-24,2,-53,31,-85,-21,-28,98,32,-11,-61,-75,55,29,41,-64,-3,95,-82,37,87,52,-130,72,146,60,130,18,-27,-85,-106,3,26,150,81,-33,-104,-11,-18,2,59,102,73,-77,88,40,-11,110,41,-22,56,-68,103,-55,18,35,-37,-50,15,-12,-98,77,28,71,25,-98,37,75,23,20,1,42,-67,-36,-3,-46,35,-5,92,39,50,-51,-67,-11,-89,6,-11,-18,-85,17,55,75,-65,57,56,-59,81,30,84,91,-59,44,19,37,-2,139,-65,-30,14,33,-28,-41,-3,-119,-20,-46,34,-49,-94,23,93,133,86,15,182,-82,22,-52,9,24,-48,116,89,110,118,155,-23,-55,71,20,-103,-53,-80,69,-30,-75,40,30,-98,65,-80,0,55,23,-25,-57,-157,10,16,120,-73,48,-73,70,16,76,-43,-27,47,13,17,-49,-93,-78,-2,-19,58,49,81,-7,-17,-98,-60,44,-81,5,24,73,63,22,68,-63,-42,32,-110,42,-47,72,21,-27,120,-33,-17,47,48,45,12,136,-153,-20,72,3,20,28,-126,67,9,-95,-56,-23,-135,6,-86,-22,-0,-82,-158,35,-149,8,-34,42,-14,44,36,96,6,127,0,-139,7,168,-64,-81,10,-17,34,45,19,-5,-76,9,81,74,-8,-28,39,-181,-101,-76,2,-71,-29,33,79,93,70,6,107,86,-85,62,-65,15,102,-24,-31,5,41,-88,-20,-9,-4,82,12,-56,-60,63,-52,6,-72,81,-44,-10,-52,87,67,-28,16,58,-28,-10,43,-29,-86,84,86,125,-33,-68,-37,-20,136,-8,41,-58,-33,123,-23,-1,-19,51,72,70,-38,-43,-15,100,80,-50,4,-101,-12,40,72,-30,-21,20,-68,95,62,9,-22,-50,58,-99,128,-36,-60,-47,-39,55,-170,-54,-75,-91,21,10,61,-59,-69,63,-46,55,-74,-96,-18,-62,-30,-22,-85,54,123,-21,-62,104,40,-52,-34,-51,-17,4,-75,-84,-73,103,65,-26,69,-14,24,30,-37,-115,-3,-87,-24,64,6,-67,101,-138,-66,-20,60,30,23,35,-85,-5,48,-112,-37,-31,-113,84,-127,-70,42,-47,-133,-30,-131,-8,-168,-17,-7,-19,-111,-52,-39,-51,-105,-84,18,19,91,18,110,-46,37,38,-59,-100,120,-95,-23,95,-39,51,30,-32,-118,16,96,62,-83,74,66,-93,-96,-85,83,112,-119,-109,-47,-9,114,-51,-25,-94,53,-43,-15,115,-86,-34,-19,-43,-5,-60,-75,47,57,-31,-100,-22,11,16,70,-66,-28,75,-74,-45,48,-59,-95,-5,-59,-71,3,38,66,15,43,6,68,84,26,-81,11,-101,-57,29,-88,-86,67,15,22,-36,-75,112,-127,-106,16,-164,-53,89,-43,-112,74,-38,56,-36,35,-36,56,-10,74,109,12,11,-35,-75,95,-89,43,42,43,-148,178,-17,41,-11,116},\
+{27,-23,40,-109,-125,-35,22,37,141,42,74,45,1,-24,18,12,-26,25,-39,67,2,34,-65,-8,-44,-36,-19,8,-6,-60,6,111,-70,41,95,65,-137,39,44,-17,41,87,14,-71,15,58,47,33,-85,82,-96,88,-60,43,25,-66,67,114,-30,50,-43,95,7,-44,-68,-79,20,-47,-44,105,-124,-106,-9,-65,52,14,48,-32,-44,-36,82,-9,7,-74,60,87,-63,40,10,36,5,-25,11,-28,57,-96,-33,-64,-42,61,84,-33,-9,45,-2,-51,54,122,10,-160,121,104,105,19,37,94,109,-95,46,3,67,9,-13,-61,-115,-57,34,34,53,-85,-114,9,80,18,-24,22,-130,-75,105,65,-34,52,-85,-122,-77,-95,-189,16,-53,44,6,103,113,5,-38,77,-66,83,-38,18,72,35,-101,-33,17,-94,28,-0,87,122,-121,-92,-81,50,-7,60,-21,-24,11,-72,71,7,-90,-23,-81,4,83,7,-37,35,-59,-13,22,-28,-73,70,-8,83,76,25,21,2,11,5,51,-20,-61,-15,17,-16,25,182,104,88,59,23,-157,46,-221,-71,-32,-23,40,-56,205,-54,-5,100,85,10,97,-89,82,126,-7,105,-117,29,-30,-11,-40,102,12,-55,36,81,-9,96,5,-39,-112,-82,-84,-6,89,-41,71,-29,56,80,45,-77,-21,83,-18,53,24,42,-60,112,-22,14,-41,42,41,55,27,132,-108,110,12,-130,26,-24,0,4,-126,-20,-70,37,59,-36,-21,-46,-56,15,61,-0,52,-68,-12,-16,19,81,-40,59,19,-59,-44,86,20,-39,-91,64,-34,-9,-90,-48,-46,-0,-25,-106,-112,7,29,-109,14,-80,-108,-72,-83,-80,16,4,7,-9,-138,-18,-59,80,-66,46,2,40,-51,41,33,23,-51,-134,109,-73,25,74,-57,16,97,30,-91,-55,14,-28,-68,-75,50,-92,107,38,-123,-43,53,-86,41,39,-118,-38,-117,-41,-72,-8,-8,-74,42,29,-74,-51,-67,-73,-20,28,-38,50,135,-77,-30,118,60,52,-24,204,36,111,-0,-61,-11,-101,-73,24,-128,94,104,-48,47,-71,59,115,-128,-77,-33,-26,62,-19,17,-103,-92,57,-77,-52,-95,-86,4,-85,65,60,-130,-37,-63,58,-3,1,114,12,-59,-63,-133,-41,13,34,-61,-73,-76,-99,6,-107,44,111,-136,-19,-68,-12,-68,-35,119,86,46,-21,38,138,77,13,-36,-107,47,-37,52,-44,-114,-1,20,-3,-41,-7,7,-33,72,-98,1,134,37,61,104,-41,10,16,-103,136,52,56,-60,4,-45,30,48,-109,-51,101,-49,-72,-134,-72,35,-86,-56,-42,-73,-2,72,26,59,-71,6,74,16,-14,53,-64,90,-8,9,86,-81,-43,-74,-8,-68,-20,43,-80,71,59,-122,-115,-103,-24,-39,-91,68,48,-54,86,105,51,70,19,-16,-59,-3,-73,73,101,-58,37,-36,69,-59,6,-63,118,49,-2,-42,-107,72,-71,-17,26},\
+{-67,-76,-37,58,-30,29,-1,87,48,86,-0,80,-32,-62,-98,-53,77,46,-87,-87,-60,-57,-51,116,-118,102,-33,47,101,106,48,39,34,32,-97,21,80,-66,-100,93,-39,-9,70,35,131,-110,-18,-15,104,-25,86,-42,61,-27,-76,-12,90,-13,-31,-73,-34,-91,-51,-34,32,-125,42,35,59,-16,-79,-67,-72,-92,4,42,17,-99,66,-8,-12,-53,102,53,31,-1,-59,1,-77,-106,72,-93,-84,-43,2,-35,-36,-70,73,28,-5,-27,-62,96,-58,78,68,-69,66,42,-127,82,-58,-92,-48,83,-70,57,27,-74,-84,-49,37,101,76,76,-63,21,32,-9,-48,-68,25,-70,37,-40,41,-21,-78,-104,-10,15,-7,-23,68,-81,-49,-4,57,62,12,6,40,57,-121,94,-101,-2,13,-61,46,118,-178,94,-126,56,105,61,-18,18,-69,78,16,91,-37,-66,27,95,-25,-78,7,56,79,-43,21,-48,22,-36,-94,10,9,43,-20,-31,-13,12,49,-5,-52,89,-68,-58,78,58,-80,117,-47,59,-36,-84,11,4,45,-71,68,-50,-78,-126,6,19,-50,118,-92,-47,-62,45,-17,124,-2,94,43,-79,-124,127,-173,67,16,38,-1,30,29,-20,-42,67,-27,81,17,-4,34,-78,65,85,-57,-54,3,-58,44,87,-6,62,6,-87,-79,30,9,108,34,-30,63,81,-19,26,32,-32,-20,43,-8,-30,-94,62,-38,-64,29,-96,-53,-33,-31,67,-89,93,97,12,-69,49,52,-64,-64,40,48,-37,21,-69,-24,-24,25,36,-21,8,-75,2,4,-85,14,-77,-31,-10,-4,-28,7,-91,-23,95,-49,54,51,46,-146,-70,-13,98,-53,-89,-7,57,-86,105,79,43,14,78,-22,59,-78,47,-7,36,-7,103,35,-77,-19,67,61,91,-57,59,7,-80,22,70,-34,12,15,66,24,23,60,-9,7,47,9,-83,-15,92,-37,90,-11,-14,103,-26,90,77,7,-87,-82,-12,81,67,6,79,14,43,-4,103,22,-2,-9,64,-30,-55,-30,-43,-0,-84,-115,-41,60,52,80,32,72,-48,-10,-3,15,-71,121,-4,-3,12,10,48,-70,-35,-123,-40,7,-34,104,19,-5,-62,-21,-60,-28,-39,-30,103,80,61,70,26,-7,-6,123,-1,68,59,35,87,111,104,86,-59,-40,62,27,62,30,64,44,-19,-82,136,21,42,125,120,-24,-120,-44,-48,41,66,-108,-23,-116,78,72,56,-35,-24,-50,-21,-62,101,45,-36,-77,23,-43,94,20,30,-63,-94,-87,-22,4,-4,-36,-88,-20,68,78,-36,19,53,-78,-61,75,31,68,89,69,-21,-15,62,-12,-85,-26,-128,60,-15,34,9,-62,-62,-10,-5,-93,-19,20,68,-69,-55,-44,81,-64,36,-43,24,55,86,-40,-9,-18,36,-36,39,50,99,-30,10,-74,-23,-5,13,75,-114,36,25,23,-33,25,-2,-4,-86,-124,42,-95,-14,-12,-85,-15,43},\
+{-37,-5,30,15,-90,9,-12,-49,50,-101,-68,74,54,-49,57,-22,-80,32,-39,21,74,65,32,63,8,-111,-45,67,-121,-12,-31,-9,18,-3,-93,-82,129,6,-77,-92,-18,76,106,151,-32,114,-125,-140,-69,63,49,-64,96,-25,-53,-28,-41,-42,80,-71,-86,92,158,-60,73,66,-11,47,80,-142,122,63,82,-35,-91,-7,60,-81,-76,26,59,-72,84,-76,-64,59,-86,-66,-13,34,-12,0,33,-28,-61,-9,-22,-1,64,-27,-21,70,-26,60,-52,-56,-37,86,63,-102,-7,-27,-143,18,117,47,-25,117,-48,-28,-63,47,-11,117,-38,-61,30,-23,68,-6,55,-1,-73,32,-22,-55,-28,76,-9,67,1,27,38,93,-49,65,60,42,13,-21,98,-2,72,6,81,-18,95,-97,-133,24,-95,-17,-15,-48,-80,-61,-87,-79,-22,-17,5,33,-103,-34,-68,25,-26,152,-11,-5,41,-116,27,-93,70,66,32,-93,68,13,59,19,42,63,-77,-66,-96,39,5,-3,-56,39,71,-55,-44,-47,-2,16,50,36,37,-35,-94,-54,6,-20,3,139,-30,-7,-15,68,109,-124,-38,-40,-25,-61,74,-62,-19,33,-66,-36,22,45,-82,-15,54,-90,-19,-50,-8,-35,-55,24,-90,-65,-69,148,-60,74,80,96,-40,-104,10,-88,-31,13,12,-30,-48,-36,-79,-94,-30,-78,122,-83,-133,-59,-48,74,25,-8,-60,119,-97,-42,52,-108,-11,58,-50,-68,49,-86,-32,-25,30,42,-13,9,33,-11,-49,82,23,-76,67,-47,64,43,-95,30,1,69,29,-81,82,55,24,86,-93,-53,-37,-78,-42,-21,-25,-96,30,39,54,23,43,-23,124,104,-39,-17,-77,48,-133,74,-18,56,44,41,-10,-15,74,111,76,65,47,33,-76,-87,-69,-107,1,-37,-14,-43,35,-78,-19,-40,4,-25,12,-56,-53,-68,-101,-20,56,36,5,-32,46,26,27,63,-138,30,60,26,-24,46,74,-32,-1,56,-107,-34,-55,-16,151,-87,-63,-73,-74,50,49,42,-11,39,-50,-59,-120,-101,74,26,45,-18,-59,35,-54,3,-15,58,41,-107,32,63,-78,-74,49,-39,82,37,-57,-87,-107,-31,-16,-22,-72,31,49,2,18,67,-99,3,-81,-11,-83,-83,-25,-5,-88,-80,3,-27,15,3,-44,54,60,-18,61,-97,-120,-25,72,27,-106,60,-129,14,140,-27,-131,-125,80,-70,91,61,96,-24,60,-84,-60,-73,20,-96,24,-39,20,44,-15,12,-48,-68,-20,52,20,81,-25,96,21,26,-40,26,66,-48,86,-44,37,-22,24,24,73,-35,-57,76,-66,-16,27,-16,-56,-76,53,-49,-18,-40,20,-15,12,54,-8,57,-44,14,-48,27,16,21,79,46,80,-73,88,64,-25,55,-57,-78,22,-162,-23,39,70,-120,-59,-77,-132,30,-83,0,51,14,-36,-39,43,4,30,-59,52,40,52,36,62,-98,130,84,117,100,-124,-21,-54,37},\
+{-11,119,58,-45,-107,12,-47,-10,-100,82,63,70,-43,-5,-84,71,63,24,19,36,-23,86,13,16,5,89,9,71,-47,30,86,7,-52,9,-59,-64,3,-72,13,-160,57,8,45,64,-32,69,-12,23,-39,-35,16,-62,-144,-31,-21,-89,33,8,-47,1,-114,38,-51,-37,9,32,94,-30,106,-99,118,90,-38,-49,28,28,30,-3,55,-47,86,17,-16,41,42,-40,70,-50,51,14,74,-23,57,25,-59,-30,-62,-70,-43,73,29,108,14,-83,-74,6,-4,-95,37,-62,-74,-34,-9,18,-49,9,-80,118,90,49,-17,14,-16,86,16,6,-38,-69,-77,88,-41,-35,11,13,-42,-18,1,-106,100,-56,-24,42,-118,64,64,171,7,-99,-242,17,-38,-107,-66,43,-159,46,17,-36,-19,50,-71,-57,-92,51,8,55,-1,-71,46,-58,68,98,8,34,118,-28,-32,124,2,30,79,26,-14,-68,40,-84,106,67,71,71,-119,12,-113,-71,-42,23,76,-86,-37,-21,18,60,-21,-95,-38,-26,57,36,28,-22,54,40,-96,-38,-11,67,13,31,4,-17,-89,-68,123,64,-137,-29,-71,-89,-38,-87,69,20,2,89,-34,-81,83,99,21,-63,103,-19,-12,28,-43,-108,123,22,67,78,42,-80,-7,73,-63,-105,32,-40,-23,8,68,81,84,28,15,4,68,13,-0,62,12,-16,-14,106,-34,4,129,-82,-23,61,-71,-22,34,-15,-124,31,-10,87,27,-59,84,-18,65,-59,-46,19,36,-93,-59,40,54,-63,2,-28,-2,-43,38,54,-42,79,-30,-76,-41,24,57,33,4,79,30,-77,-12,-90,-0,-45,86,47,-68,97,135,-65,96,22,-21,-106,91,-24,98,-68,78,17,-58,2,-80,-56,86,-36,-74,-0,-7,88,73,24,45,-31,96,-42,51,22,-47,8,31,-13,-3,-56,-21,-78,-52,1,49,27,-11,51,-76,-117,14,39,-161,-36,-16,-52,37,-82,-108,-27,-41,-72,35,-91,9,24,30,-55,-100,-3,-129,-43,-97,-35,-54,39,-57,-14,109,-72,42,38,44,71,40,28,-68,3,-96,56,3,-19,76,61,22,54,10,95,-28,9,-12,78,-3,1,-79,-64,54,55,46,49,32,54,-53,-70,-30,27,43,-44,15,-54,-135,-21,-98,24,-128,-83,-96,41,116,37,12,-60,30,-14,-7,-41,121,41,-16,-126,100,-65,-60,-52,-71,-74,39,117,72,-61,102,-48,11,44,-67,107,1,-13,16,-84,-38,-15,25,-50,55,64,-39,-59,20,-132,-52,97,-34,33,-102,74,39,-44,-112,73,-83,-49,-54,60,-81,13,-77,-86,20,79,54,-50,-72,-47,-29,-25,32,53,-62,72,-19,2,47,76,-39,3,-32,15,21,-43,-55,-55,-22,-31,60,43,42,10,-81,48,-20,-89,69,76,124,77,81,-36,-71,-122,-77,-57,-108,42,-57,-12,-6,12,-81,109,110,5,-64,-67,79,-57,4,-186,-5,39,30,-80},\
+{-15,2,-3,-85,-100,-110,42,2,99,-29,2,55,-13,44,-86,-33,-7,-84,61,54,2,-117,53,10,19,24,-45,-57,-80,-61,135,104,35,110,-43,32,-128,-58,23,91,3,-19,-24,118,-153,35,4,3,-6,19,-62,-37,-82,44,15,-15,-70,-11,-88,42,-87,31,-125,80,49,-213,127,16,98,17,84,99,-74,-22,9,91,31,71,22,37,-32,28,45,117,-72,-67,91,-30,-18,48,-68,45,-27,-2,58,-50,89,50,11,52,-58,7,-45,11,47,-61,-78,-7,-2,-7,58,-56,-13,-48,64,-28,-27,70,-41,-8,93,-51,-43,69,-102,-39,-85,-41,77,-3,-43,103,-4,-69,-8,128,-98,6,-25,-79,-131,138,-53,-122,-3,127,-21,80,-82,-117,105,22,133,-178,-120,-24,122,52,-21,-74,41,49,-74,-11,-76,-17,31,41,-33,-17,-10,-158,75,81,80,-85,-64,-4,138,99,74,128,65,-99,14,44,55,6,-103,-62,-62,23,25,-54,-20,-62,98,-73,-105,57,-67,-32,4,33,42,-46,5,-67,57,73,-15,-69,-54,74,120,-95,-155,107,-86,-144,-117,-38,144,21,135,-52,-33,-36,38,-91,56,-107,-97,-104,47,9,-97,-39,-43,-49,-36,-27,-55,-21,88,76,-97,15,-104,96,108,12,-140,-27,-45,-95,108,54,136,11,-49,-36,-84,-48,5,-50,-19,-30,-142,-28,3,-6,-51,107,24,-59,49,-16,-138,138,17,60,103,-23,-94,84,-27,42,81,-41,-67,47,-22,-93,-25,5,57,73,34,-38,-30,31,-82,-82,34,-23,16,46,-41,12,-29,-9,6,-13,-29,-54,1,-32,77,104,12,-79,-35,-74,-91,-83,48,-18,5,-101,-43,28,141,16,-2,-87,13,121,-46,-61,-73,-84,10,16,-32,-11,-69,-23,34,-41,60,-137,62,-48,-2,65,-89,-46,36,115,-59,73,-86,40,49,-30,-63,38,-132,14,-31,-107,-60,15,-73,31,46,-89,28,-92,-68,-50,55,-80,-99,-102,75,53,76,55,65,-27,147,52,36,-63,99,21,46,-77,75,1,19,66,35,-63,59,93,-0,5,71,66,-79,86,-80,-76,-64,-74,-9,46,-120,11,10,-36,-30,43,-84,40,53,63,48,52,69,37,-30,131,47,66,-139,-20,7,-54,83,-34,-152,87,1,-39,101,-93,-107,-18,-65,17,9,-176,-2,-69,-54,85,-139,-53,41,141,-51,-72,212,93,-63,98,-62,-38,11,-63,-25,-2,-49,25,77,-54,-73,-54,-68,101,-26,-83,95,48,-15,67,93,-106,-1,-92,-71,128,-61,13,73,-41,12,75,-77,-90,94,-7,-38,108,-101,-8,-87,-58,-63,-2,43,130,-67,76,68,-4,-39,15,-80,54,75,-12,64,-66,-75,81,-90,-15,-26,-44,-54,71,-78,-3,59,-130,-102,20,-76,104,135,-113,-121,-42,54,61,3,-42,-143,-68,13,62,-202,30,-31,-110,4,135,-18,56,-75,28,44,226,-11,9,-66,80,60,79,-75,-94},\
+{43,7,-87,-63,24,-3,-70,47,-21,-15,-62,15,-11,-54,94,-11,-19,-85,49,-52,39,52,100,11,-51,-91,86,47,-96,-30,38,-148,145,-29,-78,1,-3,-127,35,50,51,76,63,94,-54,147,-130,-126,-86,23,12,122,-62,-71,-67,155,27,-148,5,-119,-16,99,97,-76,-68,102,1,-76,90,-90,-5,130,-36,-79,47,90,44,56,50,-14,48,-89,-29,-43,21,-1,-55,-83,82,-23,-74,-2,-65,-70,27,-16,-37,29,14,6,89,42,-44,18,69,96,-112,32,48,-20,-59,14,-46,73,38,23,17,95,-124,19,-40,129,78,99,-7,-48,30,4,-1,12,30,-42,-113,-103,-20,-20,121,-50,73,-114,-23,-10,152,-38,-92,-83,-159,12,22,47,-30,-32,-53,-102,60,16,70,52,10,3,160,119,-98,-67,33,-76,38,-42,-61,-95,5,18,-19,31,58,-38,94,15,-81,92,34,29,93,-25,70,36,-26,-36,-30,-88,-78,-76,-41,-95,19,-73,87,7,-25,-60,99,-78,60,-22,61,-82,81,-81,-78,2,132,1,107,11,-37,68,-77,-43,-65,-16,114,-5,87,50,43,-52,144,15,112,-18,18,-2,-36,-66,13,15,18,43,-87,40,6,36,6,-62,0,-7,-22,-14,131,-35,-78,85,13,103,131,30,43,-62,108,30,96,-57,-44,45,159,-93,9,-59,-58,-69,92,-121,-2,-24,-69,20,-9,14,96,47,30,27,20,55,36,41,99,-74,56,11,-90,67,-9,-35,79,-16,-59,-54,66,67,-56,-50,-91,2,-54,94,-69,-62,-66,-0,81,105,55,-74,-9,-33,7,28,56,78,-69,101,77,76,-28,-151,-13,-152,4,-36,24,32,37,-116,-118,110,-30,129,65,-92,8,56,74,134,-73,26,69,-27,-114,12,-28,60,1,85,25,57,83,-10,21,40,15,-36,45,20,-108,-91,-74,-18,-76,58,-138,52,-5,13,90,34,38,141,-0,22,-5,40,-69,-34,88,49,-46,-1,31,-50,71,15,-14,-74,-93,75,75,34,173,-3,132,-10,-88,62,97,-52,-90,-87,-42,6,-46,13,-37,-5,67,-148,-97,-95,-114,-48,50,6,10,64,15,-8,-65,-85,51,14,35,-71,63,7,-108,49,-5,11,105,27,-84,-16,-109,-55,-95,-10,-59,-17,105,115,63,-7,23,-73,124,101,151,6,-31,48,72,42,-37,-187,202,87,-221,17,-58,-91,113,23,-38,-89,20,52,87,-107,3,-34,-38,1,-12,-57,-5,38,23,-126,109,-67,67,-66,-45,-106,96,13,76,38,14,-35,72,2,59,28,-6,-25,-25,51,-87,-23,5,9,20,77,-1,-15,30,-38,99,91,-74,60,-73,75,67,-64,22,29,-69,-48,-28,-28,-68,-106,66,-32,15,-10,-48,35,10,66,15,-48,134,-17,100,-148,-30,-23,1,-14,134,47,14,-60,-45,123,99,13,11,-79,1,81,25,-63,-22,-122,94,-91,144,-70,19,7,53,17},\
+{-69,62,106,-63,-58,77,-64,88,28,41,116,66,20,56,-133,28,86,-82,-45,48,26,7,-76,-81,47,-100,56,101,8,53,-81,-11,22,35,61,41,97,54,-94,28,95,-3,72,-31,44,-45,-35,-98,-104,106,-2,69,-106,46,-108,-52,93,36,32,-17,-42,70,-32,119,73,32,39,-5,48,117,-169,-104,-80,-48,-91,63,100,-41,-50,-14,-71,45,62,84,84,10,9,5,24,-7,-61,-33,16,104,79,-74,50,103,-16,87,53,-21,-14,31,36,-69,-33,-85,-29,42,-118,68,-5,35,11,-24,-88,62,95,70,67,110,48,38,-26,38,-72,-26,21,81,-23,33,-87,-69,-26,85,-76,-7,-77,86,48,129,-63,-11,71,100,4,22,35,-131,64,102,-28,-38,78,80,-65,-139,51,48,-76,59,61,-19,-19,-89,-25,-57,-51,-18,55,-71,-40,97,-14,-88,23,33,-126,-98,64,28,102,17,-78,-46,-77,77,64,-73,-32,17,-39,48,-3,62,56,-10,-18,16,54,39,74,-64,28,8,100,45,-56,51,-100,49,59,66,5,-34,5,-35,79,-92,28,25,-43,27,36,67,86,-55,-10,-36,2,-105,28,-2,-34,-50,-64,-52,-69,65,-43,135,51,-85,11,118,46,-136,22,34,34,-36,-29,-85,2,20,-43,-9,-26,-45,-32,0,-90,-119,-37,62,38,96,-94,-73,111,-81,100,104,66,-29,-71,63,5,29,6,124,-29,12,114,127,48,-64,-83,-57,92,-75,-12,64,-77,87,7,-6,72,25,87,-15,-72,85,-98,31,-12,-8,-12,-64,70,24,-8,-51,85,-78,-73,-65,-71,-15,84,-57,-53,-2,-18,-55,-76,98,67,-61,-7,65,85,116,87,-39,-18,70,-71,-26,92,21,-60,-121,-105,-35,-16,-9,-11,61,35,46,89,-36,-14,-92,-80,-89,17,22,46,-23,71,38,7,26,32,13,-58,0,-2,-88,-57,-57,92,-31,-24,-141,-36,-39,76,32,97,-2,-60,84,171,93,72,-29,9,122,-41,-101,-69,69,-8,-83,32,66,-11,42,-85,-104,-31,-57,-31,18,65,19,-84,8,-105,-94,53,48,-29,-6,-84,-46,-18,11,-24,37,-100,-113,10,7,-45,-7,16,-5,-43,90,-5,110,-76,-33,-52,-104,100,90,-46,-139,-33,-88,59,-34,2,63,-73,-37,12,-35,68,-81,-78,-48,-9,-39,93,-118,-1,-15,-79,-222,77,220,-82,-83,-60,-126,9,50,66,-87,-23,5,-45,-76,-55,-56,103,120,-40,25,38,110,76,11,-27,98,-82,34,90,32,61,-19,-20,-77,-6,1,-10,76,13,94,-46,-10,-21,2,-5,43,-51,-27,73,-33,40,44,-8,73,8,-84,36,-26,85,20,-70,3,-110,31,89,73,-56,44,-39,89,3,-36,-49,-78,102,27,29,90,51,47,45,13,8,60,-54,27,1,91,-4,-6,42,-64,-31,25,20,-2,100,-79,1,60,-2,64,92,-11,-73,35,-94,56,67,72},\
+{-64,48,44,148,-34,35,84,-88,-13,15,78,53,-29,-78,61,56,-84,-31,59,-71,-40,41,90,3,-11,48,38,78,-36,84,88,5,-22,51,6,-87,98,64,89,23,5,-51,103,60,142,-140,-140,66,72,63,138,42,15,25,103,-61,78,-64,18,-147,140,-84,34,-148,-67,62,20,80,-109,-116,-110,-91,-33,70,-40,19,-78,9,7,60,66,-47,17,-22,49,-8,80,76,34,-42,-46,-73,9,-71,93,-107,-60,-44,53,47,44,66,65,-51,-37,-83,69,42,86,132,-20,93,-108,37,32,21,21,-112,-85,-3,-66,-27,28,-5,18,-42,65,-44,-9,51,-85,28,-23,-39,-76,19,-58,46,13,-54,-33,-10,-58,95,1,77,-171,89,14,-14,51,-5,51,64,-60,61,26,-118,-86,-45,92,42,-6,-87,-39,80,63,-26,-91,-70,-40,10,-62,29,46,-76,46,-42,67,-71,103,-37,-107,-58,-15,93,-42,28,-70,-87,-84,62,-23,-21,42,32,28,-71,61,88,9,-87,-57,-52,48,-53,-23,-10,-35,28,-75,-58,-5,41,-76,-11,99,-72,-118,164,-7,13,-31,-9,-83,71,55,-49,77,43,-23,43,26,0,22,-127,6,40,78,-55,-29,36,-46,52,-101,-72,11,-113,-15,-65,37,-24,139,-33,-119,106,22,48,-34,87,55,-10,49,-0,74,64,-28,-100,-38,-74,-47,14,-16,50,-109,4,23,-24,-38,-63,-36,41,-64,-31,-89,55,-19,30,14,-84,-83,75,-54,-65,20,-50,33,-47,-38,41,-56,-69,9,-19,5,77,-3,91,-39,63,69,11,85,65,-47,77,47,50,-26,73,50,-27,54,50,-0,48,2,-102,49,88,42,33,16,21,18,100,116,83,103,2,-35,85,104,-53,-49,-62,-39,-96,23,-4,-51,-14,101,-52,-58,38,-3,-47,-46,-45,-3,69,71,-104,-23,-172,-40,78,82,81,-107,35,-78,48,16,6,-123,-69,-100,-30,-12,-77,-122,79,-33,-67,-9,36,78,-51,60,-58,-35,82,47,5,-48,-19,-64,-9,20,75,-6,35,39,134,19,-11,33,76,77,-0,48,-80,-67,39,68,-7,58,16,-63,-40,82,119,-43,-52,-49,-116,-103,-74,15,95,5,-31,-46,-102,34,15,-18,120,107,-2,-57,113,11,-32,-91,14,-111,9,-8,-40,-56,-5,-19,38,-66,102,34,1,-42,-150,88,63,57,10,15,-60,125,-49,35,84,107,27,-93,18,4,59,20,2,-75,-31,112,27,58,32,-48,57,-94,-8,21,18,-71,-7,-86,14,-49,49,46,31,61,16,53,-85,37,-24,-28,5,-8,27,-24,-82,-19,3,18,-45,43,13,-70,85,-26,-97,33,-20,61,47,-21,-35,-68,-23,13,46,-29,80,-2,-55,10,48,2,45,-22,-78,12,71,-97,-93,25,-48,86,33,8,21,14,69,84,-14,103,29,-51,-8,66,22,50,-118,-27,44,-54,-106,-16,31,11,-22,73,-4,55,34},\
+{-60,45,-68,78,-21,-89,-9,-16,20,-58,-23,-85,62,-36,91,60,-97,-57,71,40,48,-19,-21,38,-22,-71,-28,-59,-26,-37,-20,-31,58,22,42,-91,-96,-29,79,45,-63,80,-15,37,-136,129,-110,-93,16,-48,-113,-29,-104,-84,4,8,-32,-53,-98,-60,99,64,74,-30,59,115,87,-93,18,122,-2,22,1,67,-1,34,-59,14,55,-63,-12,84,-87,29,-86,-42,46,51,-34,60,-87,37,65,-22,37,-55,96,-28,-18,-70,-27,21,-99,-31,90,14,-56,54,-22,16,47,49,-35,10,97,67,23,4,59,86,36,-62,77,-63,-30,-66,15,-38,45,47,-11,-66,-63,-17,16,-60,-81,67,-93,68,35,-61,68,-4,17,-25,-103,75,34,-45,76,-45,-49,-99,14,-3,84,-22,-39,-69,53,-14,26,11,-44,-0,-56,-34,25,-66,-28,-40,99,87,-11,-34,-10,-72,34,-45,6,-35,-19,-49,-35,-7,67,-4,-81,86,-30,-62,-34,55,-44,-54,17,-6,79,68,-70,-82,1,-52,-88,-53,-53,8,70,-88,41,80,-91,10,93,65,99,-90,-35,123,-52,-71,-22,-44,0,102,-54,-42,110,-54,-61,-53,-35,-20,38,66,-13,-26,-88,-10,19,-25,50,-65,-38,39,-24,-56,24,25,49,98,80,66,-80,98,-34,-11,37,21,62,-18,24,14,9,9,32,-4,-21,35,25,-21,-64,84,23,101,-19,45,19,-1,-29,103,57,29,58,14,39,55,-23,31,-66,-62,43,38,85,53,91,-78,13,-36,55,37,-33,-93,15,-84,-52,-88,3,27,-8,76,55,-70,-28,9,60,8,63,30,-45,93,-89,-29,97,8,-29,44,57,27,51,46,-41,127,54,81,59,44,-50,-41,-81,-23,12,90,76,74,-38,-4,13,-80,-105,-60,-78,-77,-14,-81,-96,94,-70,-54,-43,77,-16,-60,43,-28,-15,-0,69,-48,-2,-45,-79,-23,39,30,-12,40,11,99,70,54,-73,105,46,-6,-69,76,-47,56,-74,-25,-7,-52,-126,-5,85,-95,-39,-30,26,23,-18,53,-95,-52,-90,24,69,14,-105,43,14,-42,80,60,17,13,-50,37,-40,62,37,-14,-39,47,59,-36,-32,46,33,-14,6,-14,-95,-98,-45,45,31,70,41,57,-52,-39,107,101,-3,-50,40,-25,-10,111,10,-69,-38,106,15,-60,59,69,9,30,-46,-161,-37,62,-115,-34,34,31,-79,81,-99,31,38,45,80,61,71,74,-82,73,-11,-27,-42,-19,-24,34,89,-47,85,0,-1,34,-58,47,-43,-46,-50,74,30,-96,81,23,-66,48,-67,86,14,72,-16,-63,-15,34,36,-30,79,-81,-62,39,-75,62,24,25,-72,54,16,-5,-7,69,-43,-34,-81,-9,14,-50,-79,51,-6,-63,-81,-42,-3,6,-102,55,55,-16,9,83,28,52,18,42,-72,-18,32,-112,1,-18,-69,42,74,-27,73,108,-19,-64,-34,64,31,-124,-10,-73,30,87},\
+{-34,11,5,-16,-65,-40,-25,43,19,41,22,-26,16,-69,-39,72,-81,-102,29,50,-32,8,53,-40,33,0,39,-103,-103,15,9,-140,105,-91,-40,24,7,91,-54,-73,-111,-82,30,33,91,-8,-20,-58,-136,-50,119,27,65,208,4,35,78,-111,102,-19,59,-70,14,-24,66,22,-74,-34,106,-69,177,-22,4,10,-111,-95,-17,18,-20,17,62,-83,-4,-38,-65,-58,83,-50,62,83,32,-39,-92,-35,67,2,68,-78,-15,-34,36,-38,23,-40,-4,-15,-39,62,4,49,-67,-168,-105,79,21,47,174,41,-79,86,-75,-15,51,-9,91,17,-151,-40,-9,-88,-21,-50,64,-70,-76,-44,-80,-40,28,-31,-165,-85,-19,7,78,66,-180,-36,-53,-105,118,26,70,27,-27,-42,94,31,63,-3,-49,-84,96,-80,-113,-46,23,-9,-66,-34,-146,-25,-88,59,-33,-68,68,-9,1,38,107,-11,-97,-49,-84,-47,94,100,3,-2,-78,97,169,42,4,-106,-1,-11,-27,-104,45,12,-34,84,72,-99,66,-92,-101,57,-88,-118,-56,-92,-107,13,11,-31,-212,-51,27,-79,14,81,-115,89,-7,-24,74,50,-15,-65,18,-12,167,111,-124,-14,60,-70,-125,46,-48,100,-32,-18,-15,-20,-9,114,-182,-88,-70,44,78,-70,78,-4,74,52,-15,90,-33,-100,29,-137,-15,-108,23,-74,51,23,-70,-35,21,39,55,-121,-45,-55,-30,-85,-97,79,-98,-75,71,-17,49,68,-64,-36,27,-46,83,-83,-14,79,17,9,-61,-18,89,-37,-75,-24,5,-42,-30,84,-3,58,-34,13,15,-5,84,-34,-25,-71,-24,-53,63,-48,47,46,-27,-18,119,-109,-114,69,21,-169,-102,1,-68,44,90,27,-118,8,-18,123,10,-1,-86,93,-12,4,13,4,23,-109,-130,-127,-5,38,-100,-17,44,-38,-82,-21,-52,72,-36,-34,-28,-3,-43,49,-92,6,72,-59,58,14,-25,32,13,36,61,60,-94,-21,-81,-74,48,67,183,-102,-3,15,-29,-44,-46,-0,102,-52,61,124,-1,28,55,38,-59,-57,-60,60,20,-26,80,5,17,40,11,-54,91,-32,-56,20,51,-93,-98,-119,109,-112,-13,-4,135,56,-42,25,19,5,-26,-16,101,123,-138,45,113,-44,7,101,-39,95,-38,-115,-9,91,9,5,2,-97,106,41,-24,-155,31,57,186,25,121,35,-216,-74,84,-48,-7,-68,61,-93,49,-45,96,-48,-32,60,28,60,-11,-10,31,-89,77,79,-51,96,14,-86,13,-0,40,5,36,-55,42,137,-33,-73,-42,-16,-56,-55,50,-61,-54,161,-95,15,18,93,-103,-56,-58,-97,-87,-73,-12,7,39,70,17,-67,3,86,-65,-57,-64,-73,-51,-78,52,-78,38,70,102,51,-72,75,10,-133,-82,-94,9,49,-61,72,-17,47,-136,-57,73,-44,-39,-108,25,22,20,0,69,15,43,76,-9,-86,127,-34,37,-64,-31,-132,-58,70},\
+{-7,-77,-22,-57,19,-40,-48,-75,-19,-90,38,-47,35,61,15,8,-31,60,-76,50,5,58,81,-74,-6,99,-51,-64,-74,-29,-46,-13,23,5,85,29,-123,-156,-68,31,99,102,-24,-21,-10,66,3,135,4,-2,24,135,-79,36,-32,-24,2,41,98,-89,8,8,108,1,107,-55,-77,-127,30,89,-9,110,-32,43,7,69,77,19,28,-24,-74,47,-10,47,59,87,75,-31,-20,-70,-45,-90,-71,45,-60,-122,-25,-96,-44,29,58,-3,84,-57,36,-52,25,87,-7,-78,-34,-37,94,38,-63,-110,-12,-46,96,78,58,-29,32,58,43,4,26,-15,-21,-69,-6,-51,55,66,-33,78,122,59,-72,84,-58,7,78,-9,-100,-76,38,3,34,42,-127,-66,-66,-97,79,30,1,28,66,24,64,135,-23,11,53,-104,-50,-19,-54,54,-68,-63,50,95,32,95,-17,-61,-39,5,66,27,98,-43,-61,61,17,-81,117,34,101,17,-64,1,16,32,61,14,4,-111,-9,63,-35,-29,-21,-21,60,-23,81,-37,-10,13,-8,83,59,-15,-185,-97,-23,16,-106,-66,-68,30,-38,5,-4,117,-84,-114,44,-14,-94,108,44,20,2,61,44,116,83,-28,-14,-38,-11,-48,21,113,48,-88,8,61,-39,-143,-120,86,11,-5,-1,-144,-43,-29,-6,-66,68,-98,-6,1,51,53,65,52,22,-38,-47,-79,64,78,-61,-108,-70,47,-80,-36,-115,100,59,33,-38,24,-62,32,-6,-35,-58,-60,90,-15,21,36,107,-11,32,23,-4,104,74,-21,18,-34,59,-61,-78,-56,-65,36,-13,6,16,47,-36,-12,22,50,61,-116,-94,-22,-23,-82,-29,-74,-77,-145,-118,-70,-82,-77,-130,-58,-73,-89,-76,-56,-32,67,46,35,-55,98,-29,47,-14,58,36,88,47,73,-21,70,12,78,-45,94,86,22,-75,138,33,63,76,75,-96,9,-45,65,17,159,-60,61,73,21,-103,168,-79,-132,48,14,101,-97,18,29,-41,12,-65,-21,-91,-8,15,-31,75,-7,81,88,157,65,41,4,-74,62,101,103,-28,-18,-11,7,-68,-1,-51,1,-101,99,-29,79,43,41,44,-52,52,-50,81,11,-15,-18,-28,102,66,22,-5,-37,133,86,112,37,-18,-40,-34,-97,-7,98,-50,-27,-72,-107,39,86,-15,-91,-4,-69,67,35,51,31,-56,-69,-57,31,-5,23,-16,70,-102,17,-52,-17,16,101,88,-37,52,-66,-7,-19,76,38,-41,-50,-25,3,-64,-40,20,-83,-39,61,36,-12,-30,-4,-91,-21,52,-9,-0,38,-41,-65,48,80,65,-31,88,-5,-14,105,73,5,48,83,72,101,67,62,84,-30,54,9,48,-73,30,-1,49,65,18,5,21,-88,92,-88,-43,-126,28,138,29,-23,-84,14,-35,45,115,71,-91,8,-57,75,19,-66,26,-44,67,-60,-35,-3,-16,-121,71,10,-48,37,-41,-27,-16,52,-96,14},\
+{-90,-74,-6,-11,-111,-62,3,29,-67,-37,75,-49,18,9,61,51,-5,-4,-54,45,40,37,-81,85,36,51,-92,60,-44,55,65,-21,-22,94,-67,66,35,-34,-41,125,106,-60,-86,-19,75,-33,124,109,73,20,81,115,59,-42,79,14,14,59,10,-154,94,-91,66,-11,-46,-16,172,-19,-29,-38,-7,-96,-40,-62,-79,-4,72,44,-61,-83,-67,1,-20,54,48,19,2,-2,-67,4,-45,-22,-61,-28,-94,-34,40,16,72,5,35,-11,-60,-22,62,-9,-66,-81,-68,-112,-46,-7,114,-98,-66,-84,74,-23,6,83,-97,-51,-6,-162,36,-123,39,-25,-96,-75,-67,-86,66,91,2,34,-21,-81,34,48,89,-10,-60,-32,-33,37,71,72,-49,-103,103,81,56,96,-131,41,-41,40,59,62,-113,-52,-10,-16,-1,-93,46,-7,59,118,-28,-33,85,-3,74,103,-78,-27,-79,-58,35,83,-44,-67,-24,-25,-31,-65,-31,40,57,-32,8,-78,94,-67,23,10,-33,-33,-63,-15,-80,-40,-79,-10,1,59,67,79,75,141,-73,-61,-8,69,-94,-83,126,-37,-33,-117,111,67,69,-53,19,36,-5,33,37,102,-69,-91,-53,-30,-79,-130,54,-0,-24,57,5,3,-38,34,-30,41,124,-72,-128,-36,-113,-57,11,173,32,-33,121,-73,20,64,16,42,-64,-107,12,-77,42,-62,-42,111,-31,-74,8,-26,24,170,-43,49,-137,85,-47,14,17,-73,-44,-13,93,34,28,24,53,-76,-34,89,56,-29,63,-1,64,-25,-41,46,41,-50,18,8,82,-9,-27,-85,-71,-86,3,-59,-14,-2,78,90,-3,47,-67,1,-38,83,76,-42,-17,-215,-96,-75,4,-32,-61,-63,8,25,130,16,45,24,-77,83,51,-37,-113,83,-7,-59,-11,80,-62,43,93,35,82,76,42,-47,49,157,-15,-78,43,14,72,103,36,92,-91,-81,37,25,-68,-67,-128,-136,19,32,30,19,7,-29,-51,42,-2,55,118,-3,78,-29,-179,-40,-141,-34,70,24,-60,-6,55,131,91,51,-134,-20,104,39,53,54,-117,-58,88,-60,71,119,-80,-78,-78,27,32,37,-57,-44,-38,54,-20,-30,-93,-11,-61,-2,80,73,-152,1,106,39,44,-6,-61,-115,42,-79,-29,51,17,-35,75,-172,-26,157,-64,-42,18,-33,29,-2,-45,-59,-52,38,8,60,-35,121,-66,20,-11,107,-6,103,7,-97,-13,59,-11,-90,84,-93,47,37,-70,-47,-10,-90,-86,-40,-4,-68,-29,71,-84,106,45,-79,-78,94,77,30,61,75,-75,-76,-12,101,22,2,61,-32,-55,7,-86,-27,17,126,19,-69,-39,7,54,106,-14,24,18,81,9,-93,-53,-43,-81,-14,-51,-43,-80,-38,-49,81,26,69,-38,114,-5,17,-91,-44,29,-131,70,-63,-60,-74,138,-97,-120,-69,-15,-32,-22,-58,35,32,74,-31,-2,-7,-25,104,19,22,94,23,112,-24,-60,-81},\
+{-67,-118,-104,30,-3,-33,24,-8,-79,-32,-22,-31,-9,-64,-48,-79,-33,104,-88,84,54,-59,-60,70,-20,-39,-15,8,0,76,-34,69,55,19,22,-76,18,-52,48,66,-54,-45,-63,79,70,90,78,58,73,30,-113,87,42,-120,-50,30,-50,87,5,-20,157,-12,10,131,47,19,-45,-48,-15,-69,46,15,15,-11,-87,-30,-33,80,-19,-45,-3,-48,8,93,20,-41,34,62,60,22,94,-15,10,23,-109,-35,-56,89,64,-99,-50,56,-62,-45,-64,-55,-29,-18,-93,46,63,23,-96,63,61,-23,93,25,-50,74,-46,-77,-131,8,-64,-45,-16,-0,-15,-19,-65,46,-8,-47,34,-25,-26,57,-30,-20,53,73,-101,-120,-30,-1,2,-28,-7,-83,-47,-78,40,132,45,-79,-78,30,65,37,-66,26,-41,79,109,-54,27,-70,-94,-13,-34,30,-35,62,-89,0,78,64,-24,87,-65,-80,-4,-107,-62,58,59,78,-39,32,-57,16,-20,-85,-93,-52,46,-45,55,-4,-8,-88,-87,32,-72,-64,-72,-71,22,70,-94,-67,27,-59,-96,-60,-85,-191,-73,-118,-101,27,-14,-134,-25,128,-63,22,-39,-48,-25,109,41,19,40,-76,22,47,-66,-52,-24,66,37,129,66,76,-42,59,-35,55,71,29,-52,-136,105,50,12,-4,-89,-5,41,94,-30,7,-94,-20,-11,-62,44,53,-131,78,-75,-75,-74,110,-145,71,107,96,47,46,-10,44,113,-5,-26,-73,-21,-18,-82,-50,80,-33,21,53,11,-34,49,8,45,-74,-2,68,74,-80,-76,53,-19,31,-42,-11,-79,-61,28,-9,-9,96,-68,99,-95,-70,35,-79,18,-31,-127,-6,-124,25,-87,-16,-28,-141,-20,-72,-94,-19,-49,70,1,74,1,-107,90,62,67,19,16,-66,-79,-52,47,-73,100,66,-5,-29,32,25,-11,139,148,41,-23,-24,73,-55,-15,41,-23,-9,17,-10,-34,46,-143,-78,16,47,-16,-11,-48,100,27,-46,17,-38,92,-31,13,66,-60,-17,99,17,85,-8,65,-6,-1,-93,-83,-20,-105,-70,-63,11,-46,36,-89,-53,42,86,-9,-35,9,23,63,69,-21,74,-61,56,-64,-10,3,-67,-45,76,51,101,69,67,-60,-63,-36,-70,-9,-16,-78,85,-57,-13,81,95,-56,92,36,-21,-79,2,61,-46,58,53,-7,30,-19,-5,84,-92,105,102,39,-48,-95,20,12,36,-9,-55,56,27,4,32,19,12,-36,-62,-6,-58,-16,-9,-92,90,68,-25,20,-6,-52,-53,63,-21,113,-41,-12,28,80,77,2,-91,7,-60,27,-61,-65,99,-33,7,112,-68,74,63,7,-58,-22,74,-60,-50,-46,-10,13,92,-84,-86,-42,-72,-69,-65,-56,85,53,-45,0,-26,7,-95,-84,14,18,58,-79,-48,66,55,-63,99,-14,15,-51,-50,123,50,-22,-6,-80,56,14,-94,-54,75,-31,135,-59,-3,-39,90,-64,-38,-74,11,-16,80,44,-10},\
+{91,28,85,-48,-38,75,93,-11,45,-36,72,89,-52,-32,-12,60,-33,12,-74,76,77,-9,-11,71,49,-94,-90,68,-87,-85,-12,-31,30,80,-74,-111,27,183,-148,-58,-26,100,34,28,129,-61,32,17,68,-78,103,35,-31,27,60,115,102,-119,-110,-116,33,-65,-38,-51,23,-137,53,62,162,-111,45,-51,-79,78,-86,-62,-29,-39,17,-68,58,-21,-84,-57,-38,-25,-72,-12,-44,43,84,-64,97,-62,30,47,-80,3,-68,-16,52,-111,55,-88,63,21,58,-89,-25,117,-98,43,86,-73,-22,37,51,64,104,62,-67,71,-137,-51,68,-41,47,97,-91,-6,30,61,-41,43,36,-20,9,-66,125,-102,-8,-142,7,-4,160,-54,-29,80,-103,77,-37,-110,-27,146,-42,-30,-141,-64,-4,91,-97,32,-137,50,75,8,59,-5,-58,-48,17,76,77,-71,-119,90,-36,77,86,-21,112,32,9,-75,-144,20,29,-2,-37,14,-11,-86,-63,81,58,-90,-74,25,51,-64,75,6,59,37,-7,-2,-36,-45,77,23,-85,-2,-55,52,6,39,34,-34,-146,-35,35,35,148,-35,-51,119,-57,-36,-46,111,-71,-35,-73,15,-13,-56,17,-23,-0,143,19,33,29,57,-59,83,-106,57,42,148,40,13,-55,69,-75,43,-69,5,93,100,-90,35,15,-38,72,-2,11,34,4,12,-5,44,-60,30,33,93,36,2,57,-59,72,72,-64,-16,-20,48,74,37,-94,82,78,34,23,-18,66,-66,50,0,12,-71,-49,84,63,15,97,-9,-38,-25,52,-32,80,59,21,-46,-5,13,-61,19,-21,-62,13,94,-37,-23,23,75,-111,-131,-58,29,102,180,36,-184,-148,-17,50,9,59,-46,-65,107,18,72,70,119,43,-27,27,-101,-57,-39,-19,-65,-18,41,-76,-13,92,41,-34,-16,139,-32,-76,0,-14,-33,58,-31,13,46,-94,7,19,12,-121,-29,39,47,-54,70,-51,-55,20,-23,-11,66,159,-14,118,15,-12,58,15,-13,95,9,-60,1,-91,-96,83,-112,-128,108,-127,-113,-80,13,-42,-5,-18,80,16,-31,-11,38,-35,75,116,-26,83,22,35,-10,81,34,18,108,96,28,32,-49,-7,21,-4,33,19,-30,-121,-34,15,-76,2,-23,9,-88,-65,-101,-64,76,87,20,-14,-58,-185,-109,49,16,-95,-15,-146,-101,214,20,-84,119,42,-45,18,-12,-62,26,51,2,79,-43,-104,-30,69,-17,92,53,-64,25,-52,-21,47,-42,86,77,-54,79,-58,32,87,61,27,29,-51,54,-1,-29,61,-82,-40,26,-40,-0,-22,-21,13,-100,-75,-12,-105,-9,34,-85,-2,62,59,-63,-12,-72,-56,-12,-69,44,-17,42,12,-10,55,17,-45,65,-65,-32,50,50,-21,70,98,-64,121,109,-70,81,-67,-32,8,-34,66,67,-54,26,94,67,-43,-93,64,105,-60,16,57,77,130,110,-43,-59,10,79,47,8},\
+{38,-130,19,44,-44,-51,-0,56,-56,1,3,81,2,68,-141,74,81,23,101,29,-62,7,83,18,34,-97,-38,18,49,-100,-81,23,-23,31,-26,-33,63,176,-5,-108,-134,44,39,170,-10,96,64,-55,135,235,-95,158,-91,-55,60,83,27,-162,71,-90,74,-14,102,-16,-9,-69,-26,84,-56,-54,-118,-44,55,-86,99,91,4,-70,27,34,32,56,22,-40,-25,-83,15,-3,-122,-95,-1,48,-75,-28,-38,-52,-64,-6,21,-40,-32,-30,-38,-81,-41,-46,56,-18,-115,3,-35,-50,48,-4,-41,-86,-142,51,-33,-73,-77,53,-61,63,-56,-24,-9,128,74,93,-53,46,-97,40,-26,-43,-12,108,52,41,-105,-168,-9,-8,-40,22,179,61,127,53,28,19,64,-41,-30,104,-10,-92,-71,108,88,30,-99,-90,-80,26,17,6,28,28,133,47,61,19,73,50,-56,-49,37,-42,7,-117,-14,-114,-73,16,-16,-139,-24,47,-8,-79,-137,-71,-1,131,-21,-29,-42,93,-48,6,8,-38,-40,1,-33,25,12,-2,150,-60,-121,-41,26,13,-41,-107,-12,59,-62,84,52,41,-9,-33,-8,42,-36,-49,-52,52,27,-51,98,71,-17,51,48,52,51,-31,21,56,19,6,41,126,76,51,186,-85,19,-100,-46,-26,-3,-69,-80,17,41,61,-40,56,61,-29,58,89,-84,-38,95,-19,-5,85,62,13,95,10,-48,-47,12,-73,19,-26,18,-45,18,9,49,-12,-50,-91,48,19,-53,16,-14,78,11,-83,-75,-67,-8,66,81,-38,-73,73,65,84,72,-86,0,40,43,81,-25,18,89,22,-68,-57,61,-50,75,-107,-58,-73,-235,69,102,19,-130,-160,-180,43,50,150,-83,-147,-30,32,-1,-15,-88,-5,23,-111,9,57,65,5,9,-89,53,85,102,38,-30,107,162,-8,163,229,73,40,30,-31,161,183,34,-114,83,-88,8,66,34,6,-69,31,29,-85,54,-37,-50,40,-23,-6,-81,62,-40,96,4,-82,60,11,69,27,-8,107,-32,-150,88,-14,5,90,-20,-35,46,50,-19,108,22,53,105,-47,6,20,12,118,-128,-24,-81,-26,29,30,-39,-25,15,51,-19,61,48,108,80,26,70,27,9,-44,-37,128,-54,8,15,-138,-40,45,-35,-62,-111,-13,5,29,-100,-62,-104,6,103,-16,-139,-43,33,-59,72,57,-109,-93,-43,-146,108,-20,-26,-61,-24,17,40,-51,-72,-87,-47,-106,-21,-43,-85,-51,110,-118,29,125,-85,-91,54,26,105,133,46,-171,-48,24,-52,48,4,4,-28,70,6,-128,-50,-39,98,42,91,-96,-29,-44,-42,-48,79,5,-81,47,-42,53,-77,-60,-57,62,-49,53,-69,37,111,-21,94,102,-12,-66,-90,-91,-87,57,-56,73,-8,43,2,-71,-61,-29,-76,53,106,42,44,125,-69,51,37,-28,20,30,-49,5,72,-79,-18,24,-26,-93,139,217,-126,-17,-48,44},\
+{9,70,80,-158,-147,-41,-136,74,92,-47,-43,-62,80,5,-96,-93,26,-57,-58,55,4,-2,10,-11,77,56,-71,18,56,-46,153,-4,-43,27,98,106,-67,-160,-40,249,122,15,26,-41,-23,118,-48,-57,48,-45,77,12,-6,21,61,40,-52,84,-53,49,-92,34,15,5,-5,-83,36,89,-51,39,-115,-114,-25,5,-47,-36,-1,40,-62,-58,-50,70,-107,59,40,-45,-67,-43,-36,-24,-53,87,33,48,-44,3,12,44,58,89,-40,60,73,69,72,2,78,56,-93,59,50,80,-5,-88,8,-146,-94,-103,-67,-75,122,-123,50,-16,-14,-92,99,38,69,-148,68,-30,-100,-86,-2,-14,50,-130,43,-10,-104,30,145,88,-123,73,210,-206,-25,17,9,86,-35,-85,46,-27,107,-11,121,-106,154,79,37,-33,-1,-148,86,-75,-129,-34,-13,-8,134,9,-6,4,6,-30,79,85,-144,7,94,47,91,90,83,71,-7,-79,52,-0,-74,-11,-3,10,-40,-56,-68,69,-79,-64,78,46,-26,39,-88,-23,26,-65,18,89,35,1,81,-10,-168,-99,194,-21,-225,-86,-23,109,100,-106,12,66,-75,-63,-41,-67,9,82,-1,70,46,-43,24,-43,112,-58,13,-35,77,-87,54,44,56,-50,188,111,-185,38,5,99,22,-11,-47,-15,-2,-21,7,37,28,48,27,-67,-72,54,61,89,47,98,38,-94,73,-107,30,-97,59,94,-87,-125,42,2,18,-40,18,13,-23,-25,113,52,-64,1,-75,-36,-31,38,1,-41,52,-36,-51,6,39,-28,56,17,-28,-104,16,-4,-42,22,57,72,54,-57,-40,68,16,-15,-161,-139,-59,-17,-103,-242,-80,-39,123,-24,-85,65,38,61,-88,-41,-78,5,29,57,78,-100,79,-21,69,110,30,-54,11,151,82,-20,-8,80,51,188,-38,11,74,106,53,-71,-47,-100,-15,-20,20,64,44,28,-102,12,0,35,99,-42,-127,-45,15,88,-13,-30,63,-73,-134,-128,-110,-53,-35,52,70,-55,-55,50,-55,49,-53,29,-33,52,26,68,53,59,-34,86,83,-34,32,-89,-138,-57,-114,-7,16,-12,-66,-25,-62,76,154,5,72,-84,26,-48,-3,-17,7,-23,-82,-74,36,-57,-12,-2,85,58,120,59,34,42,-106,-147,-42,28,21,53,-9,26,92,23,-8,120,-37,31,-35,-35,132,92,48,-33,52,100,-129,11,-130,87,-154,-2,11,21,-14,124,-44,5,-105,10,-106,94,-56,37,-29,74,67,15,65,-42,61,2,-14,56,92,12,14,124,2,-70,-59,-23,-35,-80,21,-84,81,-7,-45,-78,45,-102,-59,57,28,2,39,-81,85,22,6,85,-37,-80,-83,-16,-9,-3,52,78,61,-3,-35,-39,-58,81,81,-61,-56,31,98,206,-41,-97,-10,-68,35,190,74,-155,-94,-5,-5,46,58,17,23,-49,-94,79,-63,10,22,29,-43,40,-26,-91,18,76,-44,-9,7,-40},\
+{3,-6,-89,-35,-5,-51,-11,50,-29,-118,1,-44,24,103,-10,-34,-66,-77,-52,32,129,-7,46,49,60,108,-51,91,-29,-92,-53,93,-111,-58,29,-10,10,-148,69,-61,15,-169,-122,-60,-22,96,-31,-122,31,-64,27,-73,82,14,-19,3,157,-26,100,119,-88,-78,63,60,-91,-3,-87,93,-27,-57,49,-74,89,-3,72,-15,16,24,-38,78,-44,-85,-72,3,-31,-76,-83,68,57,82,35,-84,-56,64,-34,-16,77,21,-60,-27,61,110,40,-5,95,38,-5,-53,-67,60,127,98,-38,-84,-115,-13,48,47,71,-124,87,25,21,-52,67,-100,-82,117,37,-26,91,-20,-89,76,84,10,39,-74,22,49,86,-0,-110,-218,-151,80,-60,41,-52,-95,-49,94,1,68,-104,-113,71,-34,35,53,-43,24,-35,-68,-32,34,50,-45,-34,69,-99,-20,-8,11,-74,53,34,78,-51,85,27,75,-71,20,-66,43,38,27,74,43,-31,-43,125,-127,49,-24,-3,55,-25,0,-77,42,-98,95,67,40,11,55,63,9,-156,102,-4,104,-66,-70,-64,69,-85,-128,-170,-48,-73,-7,115,-88,-168,-67,79,-20,32,-77,-71,-48,-36,75,130,38,39,-29,25,68,-14,57,-76,-6,-17,-17,50,66,-20,-103,-96,47,50,72,-19,102,37,-126,36,-30,-1,38,66,-88,-73,-104,29,-48,128,-47,93,80,40,19,-2,55,-27,67,-27,66,77,20,-22,42,-76,54,44,-8,11,-9,16,-26,30,-5,-80,34,-27,-29,-62,-20,-56,40,-33,71,-49,-11,-66,51,21,86,-79,-25,-63,-87,66,-35,30,39,-11,-74,-31,40,-103,35,-86,16,38,-146,-127,-92,61,-148,-41,-99,-53,-20,71,26,-85,-90,-2,39,28,72,-76,-4,-44,-64,44,39,-45,-97,12,5,49,90,26,43,123,91,84,-17,105,-47,56,-22,29,112,-33,110,99,14,43,95,125,60,51,13,-22,19,12,70,39,-13,-46,17,53,-3,82,-41,32,2,-69,-47,-40,-28,-25,9,-76,77,-46,56,34,-4,7,7,1,-52,-28,-25,20,55,52,-91,45,26,-47,2,-54,28,77,-49,28,-83,-60,-137,-47,-15,110,-12,-27,-56,110,72,-37,116,-81,120,51,64,61,-88,-14,-21,1,-2,-17,-40,-31,-68,107,-90,-61,-28,-46,-57,-28,3,-125,-86,76,-69,-121,-145,52,129,21,22,-28,75,56,0,-39,-13,-19,-15,-24,-26,49,-74,-71,-48,58,-54,11,17,-9,34,-47,70,42,1,-118,-33,-66,-50,-5,142,-19,10,-4,5,97,-13,-95,68,-13,-15,82,41,-56,89,23,141,-27,-42,-87,23,38,118,87,35,-74,-25,83,76,-72,14,67,4,-65,-19,49,-42,91,-45,13,-66,59,46,72,111,112,-88,68,-66,-91,19,94,74,-11,66,-108,-69,-75,4,87,110,94,24,-15,30,8,-58,-60,-17,-12,40,57,-199,34,-1,-82,-6},\
+{-73,7,-10,-15,31,-16,20,-7,4,-29,25,-55,-51,88,-57,-100,65,-76,23,26,78,-1,46,23,3,-41,62,-78,-21,-76,39,-39,15,40,-45,32,93,14,36,-67,-39,44,31,47,-2,68,-116,-10,-116,-5,36,56,-92,-100,-53,86,-69,55,-24,-26,-54,-21,-53,91,-7,-43,10,12,2,52,-43,-122,-16,-60,-49,78,16,-21,-6,19,36,2,-54,7,-51,-42,-69,-56,-69,-47,-83,-73,82,-22,88,65,-69,-10,-12,38,67,55,-30,79,89,97,19,-51,70,10,7,-23,-44,-47,38,-3,16,47,50,52,-56,20,92,35,1,-42,94,-95,-69,36,-22,-32,81,-55,22,60,-94,36,86,33,142,11,23,-98,-62,68,72,-88,15,-59,-1,-14,-75,-87,47,-55,-47,5,54,97,-90,28,96,-11,59,66,-49,-70,18,5,20,-76,-33,35,42,-61,-58,43,-92,58,-10,82,-0,-33,6,-25,60,-61,12,-45,66,-70,35,-49,59,-46,46,-84,-11,-1,-33,71,-63,88,72,-25,-58,-68,19,14,41,-70,19,-58,70,-59,-87,110,23,-1,-99,-17,66,-47,7,22,14,34,73,-4,-17,-87,-33,-106,-39,54,14,-13,65,-38,-46,-88,14,16,-33,-76,86,49,101,-113,-112,62,0,-72,-67,-87,63,34,91,-52,28,-46,-10,-25,-53,-8,-57,-0,-73,75,91,-12,22,2,-77,-48,43,-73,-60,-109,-0,64,32,-58,45,62,-78,33,85,-81,-83,-61,-27,-16,-13,-19,53,-46,16,62,-33,-5,-31,-8,-14,-68,-21,-76,-83,-1,36,-2,80,55,50,-86,3,4,-48,-62,-58,-18,-61,87,14,-30,17,-76,1,-14,92,-73,87,-69,10,-83,72,21,102,78,32,-118,37,-45,-12,69,-87,1,-2,-6,-73,-45,-66,-82,-83,-37,-10,-23,-69,-26,-9,-80,91,-34,68,34,51,34,-101,-25,108,-49,110,-54,-88,-90,105,38,83,-37,-64,-86,90,-64,107,-56,14,-91,73,80,-44,22,-68,46,43,-47,73,87,78,31,-89,-81,-10,51,20,-67,-35,-12,54,79,47,24,58,-23,73,5,-7,92,-89,54,76,73,40,82,105,71,-1,-87,-8,-75,-93,-98,-32,69,92,1,-8,-72,8,-76,42,-65,31,31,-39,2,16,90,-17,-23,-39,-32,-21,-32,40,44,-58,-33,72,93,-41,15,-58,-34,-39,27,-106,-70,81,9,-41,49,-73,67,-90,-26,57,92,-47,47,15,-41,-34,52,96,12,-90,-56,-3,-58,5,-109,31,-40,90,-35,45,61,-98,85,7,10,-95,-99,74,-9,-46,90,44,-53,79,90,-28,-37,4,14,-17,45,-5,-27,25,17,-66,56,71,78,75,-3,48,37,78,13,23,70,-30,28,-35,-42,76,-28,-0,69,35,-49,-54,-14,-47,-29,-44,-77,-73,-22,-1,-81,-27,12,88,50,-36,-37,-44,-56,73,26,27,-2,9,85,-71,-44,78,-27,-5,-21,-10,-116},\
+{-40,33,41,-103,-65,-75,-46,-25,48,-49,-94,-11,29,-22,0,56,12,-77,61,46,-12,53,75,-51,-83,-70,-33,-41,-91,-75,-61,64,-32,71,33,46,-30,-35,-28,31,-22,27,-5,-25,85,-82,105,103,-10,-4,78,-19,-23,91,-36,28,83,-0,19,68,6,-10,33,-75,-71,103,-47,-50,-94,-38,-60,49,34,54,40,-59,-35,41,-82,-42,69,88,72,-61,24,-18,32,-5,-85,29,-74,76,67,-78,2,5,13,-93,56,-39,-21,15,-38,-78,14,-43,-49,48,-50,79,-71,36,31,35,-47,-50,41,-12,-5,-31,32,-14,22,-29,42,-30,-120,45,73,79,35,-74,-121,12,99,8,-60,22,-2,39,-100,40,-85,-62,-97,17,49,-12,-15,-85,-73,-46,45,-26,53,53,4,-102,-66,76,-10,56,24,-37,48,12,-32,-62,52,-40,-45,-90,-18,83,18,74,78,-39,34,-39,-62,-51,-97,-8,-19,31,33,-115,-91,54,29,-29,-61,-91,-61,87,70,-81,-19,-72,63,-93,-72,-46,-4,-52,-29,24,33,-84,51,10,-21,32,86,-46,-107,-15,-49,23,32,44,-50,-37,62,72,-82,-27,72,29,-64,-36,26,-78,-81,-79,-36,58,-72,-5,9,-6,1,-93,9,51,34,25,61,-21,72,-56,2,0,-6,-86,-12,-26,26,76,33,-89,-69,-27,18,-12,-60,-75,-10,30,-107,-15,-43,-107,90,-78,16,-72,68,-95,7,-88,19,67,-92,-18,-34,-28,67,-63,-13,22,-62,78,35,-7,-30,-49,27,-44,-30,-33,-64,-40,-35,-3,71,-46,55,-7,97,-63,41,39,-23,-42,-51,28,-82,16,13,-65,-41,-18,9,-92,10,51,-19,-15,-6,-110,-19,-44,-58,-37,-58,-9,-25,37,-72,-43,-45,16,-46,10,-106,-20,-54,50,-1,14,48,-64,-11,-6,-10,-24,15,84,-81,-54,-41,-73,-71,77,54,75,-97,98,-42,68,81,20,-39,89,-63,32,-65,-78,-49,-20,-15,3,-1,-70,-95,31,29,20,-36,58,-99,-56,112,65,-75,-71,16,63,-45,-71,-14,-53,27,39,5,-60,-72,-75,-89,-43,3,4,-97,17,83,-4,-69,-52,40,37,-24,10,-16,61,27,-91,34,-55,0,89,-11,67,-31,48,-7,-71,-87,68,-65,-43,44,-93,51,-4,68,11,-56,-67,65,-37,-27,-41,64,7,46,-3,-24,-34,88,-62,27,92,-15,-100,48,78,4,-72,-88,51,32,50,8,-25,9,-45,29,-75,12,-61,3,41,62,37,57,26,50,-53,-72,82,-58,-32,57,42,48,62,-64,119,-14,-52,53,-59,-35,-91,-7,-93,5,-23,-46,-93,77,-27,-12,70,50,-80,-20,-42,-16,-65,-73,69,38,70,26,-17,-92,-25,-57,-91,73,29,14,67,10,-88,-45,67,43,8,60,-20,-14,91,-33,55,-37,-12,-15,33,102,51,88,65,-41,-7,86,50,-49,27,21,2,21,48,19,-60,-69,-63,90,-15,51,-94,-23,2},\
+{-99,-52,-34,-77,-78,96,88,-53,-83,-35,-4,85,-114,38,-23,79,26,82,-59,-56,84,-78,-31,59,-12,3,77,-117,-94,55,34,-20,-54,-8,74,21,-48,83,85,11,-61,117,-119,-11,-32,28,-68,-5,-93,-204,-102,42,-134,-28,19,-116,-84,-28,18,-15,71,-28,-43,-47,79,-49,107,-61,-10,48,94,-14,-29,61,-67,54,-89,36,59,37,-10,31,-53,83,-78,45,28,12,31,-31,11,-68,34,84,-29,7,35,-57,32,67,-30,25,-38,59,62,45,67,-49,43,-106,-21,32,-55,59,-74,85,2,34,-27,-12,10,60,35,-74,-99,48,5,2,83,-14,46,-19,-121,-80,-82,-38,41,57,50,-102,-91,-28,49,57,48,4,-86,84,-22,62,-89,33,1,-87,32,127,4,-90,79,-72,7,-53,60,41,58,35,-46,71,-123,35,87,17,38,74,-38,88,73,60,-73,-24,-46,-61,28,-37,-69,27,25,-78,8,73,-14,54,47,98,84,-23,-80,71,-57,-2,-27,-43,22,-19,-7,57,-46,-61,55,-87,70,-6,-95,64,-98,49,29,-105,60,-65,-32,9,-32,45,103,17,-107,122,-120,-59,45,8,-63,77,-100,83,146,78,19,-64,-70,27,8,-83,-17,71,-56,66,-27,48,22,46,0,-12,30,-80,21,-66,-105,44,101,27,62,-48,-69,-42,-19,-70,-89,10,-157,37,-25,-98,-49,108,-90,30,10,-105,93,19,72,113,-75,62,147,100,-73,68,80,27,-1,-91,9,-62,-16,60,-16,-52,-54,-2,-63,56,-12,56,33,-10,16,-86,10,4,6,-61,-21,-21,-85,-103,-61,47,77,-59,31,-47,-100,11,54,23,-71,12,-22,-18,12,-23,61,109,-88,-117,-71,46,64,-43,-35,-18,25,10,-143,2,25,-75,-96,35,-82,-64,11,-65,-75,64,-75,55,-27,-11,91,-52,-28,57,-33,0,-24,118,-34,-21,-32,121,70,-41,13,-49,-49,89,-66,-67,114,5,82,-49,-31,151,1,17,52,49,4,91,52,45,0,16,48,33,-23,67,99,-28,-84,69,-99,-21,74,27,-50,-24,47,-49,58,-32,-78,-98,-3,-70,-11,28,42,-24,-58,-57,-34,39,-83,-30,110,-23,-80,-23,35,24,-61,45,-46,81,-20,-23,-29,-21,-61,-55,-63,-78,73,63,100,43,26,-11,1,-58,25,-71,104,106,18,-75,38,-122,12,-125,-86,30,-96,-67,28,27,-56,-62,-37,-84,93,54,59,51,-57,-15,-28,79,53,-10,-112,-43,-7,-113,77,73,-11,-65,-64,61,57,66,-26,27,27,-81,88,-48,-6,49,19,-30,31,70,-31,-23,39,-91,-30,48,9,29,-33,52,-47,-104,51,72,17,-80,21,61,-30,-42,43,-66,-44,-91,-63,72,-40,23,31,-24,0,-2,110,-38,117,44,88,105,-12,-26,51,47,-68,-17,-106,-81,7,133,-20,-19,-62,29,106,-19,-44,21,-69,-32,114,-118,-47,-28,64,49,28,41},\
+{12,-85,0,-3,-21,64,-35,-20,-84,-79,31,-58,-80,-12,52,87,37,56,53,25,12,-7,-68,9,-16,-60,-23,-2,31,17,-122,30,-49,27,34,-52,-16,-68,-31,24,-22,29,-58,-90,52,60,53,-16,-101,-170,27,-15,21,16,39,-120,-140,14,-91,-78,-34,-153,-82,-37,43,23,57,-68,68,-68,93,-136,41,18,-45,-64,63,-41,-57,-40,-30,62,-83,95,-38,66,28,84,46,-10,-84,28,-91,-58,72,66,35,80,-83,21,-39,68,-39,33,-24,-6,-60,12,76,-51,-16,46,-54,101,52,26,43,55,-8,75,-123,-17,16,11,-22,21,-79,-84,20,-90,19,-111,21,-87,2,-158,-1,13,24,55,85,19,35,-94,32,67,32,-87,-86,62,-21,40,-15,113,-13,137,-69,-139,-85,42,1,32,-123,5,117,56,6,3,-166,-115,-50,81,-50,-35,-56,23,82,-40,-24,15,-25,-6,-42,51,65,109,58,-55,2,81,-9,-87,22,50,18,12,14,86,-99,-43,17,40,-77,-87,9,-92,-100,7,-97,-38,-60,40,51,50,20,-67,-51,-27,65,3,46,-36,-55,-39,-1,18,42,128,-77,-56,24,127,-34,-9,-32,-49,-36,-47,-68,-16,-93,-87,29,-46,42,71,-47,-80,57,50,-1,-84,13,-1,-93,-28,-83,-1,91,-103,-92,81,73,81,-127,-73,-18,-123,57,-89,-56,-37,1,-55,19,61,-41,-38,93,-89,54,76,-112,5,-1,-129,64,24,89,9,33,-68,-87,66,-49,-19,40,-11,62,-39,28,-44,-48,12,-12,64,-86,-95,-67,-42,55,-2,-20,47,-20,66,83,-50,53,-45,68,-69,47,-9,33,-45,51,-99,31,-61,-53,-77,-39,1,83,80,-87,-53,-1,-2,-52,114,-19,-86,-3,-47,-61,-21,-5,-115,-137,34,-17,-20,-104,-126,52,-110,-43,0,80,68,111,22,-85,-21,-64,-21,-72,-110,44,100,14,74,-66,-17,-120,-18,51,32,-3,63,-6,-25,102,-45,46,62,29,-47,-68,67,85,81,81,64,-80,49,92,-3,-28,23,91,-48,-35,60,-115,17,67,-66,-11,-7,-6,-116,63,29,7,29,20,-94,39,9,-49,6,-65,-88,39,33,34,-5,-11,-1,10,83,-78,33,-44,50,-42,74,-44,-101,16,-39,5,-13,-44,-126,93,63,-66,-17,60,72,99,52,-12,12,76,126,22,-22,-94,-45,2,40,-35,36,95,-9,-46,-82,34,6,-24,-62,64,20,-16,85,40,-34,7,-54,-61,75,-85,53,-95,41,-32,73,-10,6,-33,17,8,65,-119,18,-5,94,-24,-21,-22,43,-54,78,-25,39,31,8,32,26,29,18,-17,70,-17,81,-65,-65,-64,-5,-10,-53,-66,41,14,56,72,-51,-8,4,83,-54,4,-8,-92,56,-51,48,-78,-43,-9,-43,-43,-22,-44,-21,-77,7,19,-22,-5,-19,-22,-69,-52,-113,-122,-42,30,-51,43,-79,-114,82,127,44,56,-23,68,-54,-65,-24},\
+{-25,153,52,65,-97,59,77,-108,11,-17,42,132,-76,54,-90,-132,-59,125,43,18,-25,-20,-71,8,72,47,-73,-95,67,88,-82,21,116,85,-18,-76,88,-63,-221,27,83,108,213,-20,-25,46,-96,139,141,60,-37,1,-20,41,2,69,-51,-2,26,27,-3,48,-25,21,-59,-39,124,-131,49,-12,-12,-123,59,-16,-68,8,54,26,-101,53,59,-17,-79,-77,-97,65,12,-67,34,-66,76,67,-21,89,-75,-91,82,-93,5,-6,-15,-36,-23,85,-31,-84,20,-79,-63,-53,-38,31,-27,24,3,-239,-94,-106,-34,150,138,-85,21,-49,108,27,-36,5,24,57,-58,-11,24,101,-39,35,8,75,-72,-94,-158,-63,-93,15,104,134,125,-29,-152,41,83,-64,72,-29,-96,-34,-1,-62,66,28,43,61,-101,-94,51,18,146,17,-88,-91,-34,-20,31,-10,62,20,-22,-26,37,88,123,137,-15,-102,-43,-23,0,-23,-101,95,77,-36,32,-60,-37,75,-34,-56,-47,-55,-56,59,-22,65,-60,-39,64,-95,114,75,-13,150,-3,-78,126,32,68,109,196,12,40,-43,113,-133,42,-57,15,28,17,-71,-48,-54,31,27,16,-16,6,59,134,-96,-12,-63,-28,33,-4,-49,-77,-54,-13,-15,98,-64,-34,-32,72,-129,20,-5,66,-89,-28,78,44,-69,22,-86,-33,38,-40,82,-59,-75,-82,-18,26,77,78,27,34,70,-21,-20,54,75,7,14,18,47,-50,73,25,25,-6,-70,-43,10,45,-27,-79,-30,-39,71,25,33,1,-70,47,46,92,-56,-57,-74,50,-74,-1,53,45,-29,51,-15,54,-41,-47,57,-72,-20,84,93,46,77,58,24,89,-91,13,36,53,68,-78,-14,-125,23,24,-101,-91,-59,-35,-94,8,-36,39,40,17,-105,25,-27,82,30,40,-11,-59,38,42,-60,43,-142,-123,15,-128,-33,142,34,-39,-84,75,2,-72,-40,-66,-13,-12,98,-56,38,-13,41,4,62,-18,-4,26,-193,-1,117,1,-70,74,61,-69,-31,49,-7,-12,-11,5,-24,77,-73,24,-53,4,77,88,-39,-146,25,-70,38,-6,-68,-95,9,80,30,-4,66,-154,-45,-32,-67,1,29,-1,-48,88,51,31,-80,-140,107,-4,178,128,63,34,14,-30,94,-62,31,-113,-128,-31,-36,-103,4,-49,29,62,-4,21,39,-53,-196,235,122,-97,1,-10,-55,-27,54,-25,15,-32,4,-76,-11,162,75,-96,-33,-56,44,-54,-5,-28,-107,-103,-32,17,60,-65,-72,-92,-35,28,53,-75,85,-24,107,141,32,-75,-5,-67,65,-63,70,85,68,88,7,71,-83,52,99,-14,-69,-89,24,-7,-13,-51,91,23,-19,38,-67,70,-11,-32,-15,48,87,25,-57,91,-32,-51,-69,102,-30,151,-93,1,11,-23,26,124,-18,16,25,74,79,-32,-67,71,-38,86,-21,-106,57,-64,-52,-27,86,16,35,-50,-60,-36,-58,-82,-80},\
+{-35,55,-80,73,-25,-53,73,-43,-80,-55,-61,58,-98,48,58,-99,-49,31,36,-22,-40,-98,-38,95,-90,3,-10,23,-105,64,65,26,17,-87,-12,-38,-19,56,-64,33,-36,41,15,-64,-38,-87,-41,42,-32,-56,89,-85,-1,-24,-119,-52,85,28,1,-50,-106,-48,-43,-88,-137,31,-51,-14,-79,95,-77,-73,16,88,55,-53,-25,-85,-30,-96,45,-46,-23,83,87,87,46,-34,-48,-98,25,10,51,-31,59,79,53,-18,7,79,-52,14,-82,-89,-53,-55,-21,-71,-61,-100,0,9,34,54,37,11,33,73,-50,26,32,-5,-37,14,-5,15,-118,-86,87,-8,20,65,-95,42,-97,-20,-18,21,36,-43,29,-48,-113,-44,62,66,-36,76,71,95,-17,-80,-56,-69,103,70,-111,-1,-38,27,-36,38,98,-56,-100,94,30,-8,-82,70,26,-51,-92,89,4,52,38,-38,-55,68,6,-8,-72,-30,17,52,-3,-3,65,80,61,65,10,47,-32,23,-83,-76,37,49,-42,-29,11,-46,-21,-59,-12,109,101,-63,68,23,55,20,65,63,60,-103,57,24,122,-38,-87,-44,-20,-72,37,-32,33,22,-65,-88,-67,83,-43,-87,-33,71,94,-12,32,95,20,37,-27,-21,-19,-3,-12,-39,-101,39,-12,-82,34,-39,-47,-36,42,68,52,-74,28,30,76,28,-14,-10,53,48,51,-31,10,30,-18,77,0,-49,60,73,61,26,77,-102,-99,-5,-42,44,-62,87,-43,46,86,23,78,98,-17,-61,-62,9,63,96,-1,20,44,-36,-84,-47,-35,-28,36,1,-85,47,48,99,83,52,-33,57,53,76,-33,-22,-82,86,-44,1,34,-39,67,-19,-22,-42,-56,-22,25,-54,-31,-123,-22,30,-67,-80,-45,-45,-60,89,-1,-27,100,13,-126,-68,-87,-24,-0,14,7,20,65,41,-100,26,-92,86,39,14,-30,26,-17,-14,43,-67,110,96,-6,-104,-30,64,-75,55,76,-101,96,-59,42,59,74,-73,-71,-2,24,59,-10,-78,63,-5,-44,24,84,-110,90,35,0,3,-31,96,-16,-61,48,99,-102,35,-80,40,23,-77,14,-29,-108,52,-40,44,-55,25,14,-2,53,98,39,68,-39,38,25,45,-84,64,-49,69,19,71,25,51,72,-42,49,-26,-69,20,-47,50,-22,-97,127,-65,11,87,-6,-56,58,-14,-87,-80,53,-85,-1,64,18,5,-12,25,92,27,-10,92,30,33,24,97,-50,-64,86,93,110,52,-84,55,-81,64,5,84,75,-105,-5,-55,9,-21,-38,-62,17,71,-79,52,-28,-30,-14,18,31,14,-2,-34,57,42,-14,-14,57,23,35,-39,-72,-20,-44,-87,-26,104,54,49,14,-77,8,-51,40,-83,46,-37,49,38,-84,-30,89,67,41,3,17,15,41,-66,12,31,76,19,78,-10,86,-46,-4,-69,-78,47,-21,-13,11,47,10,43,10,39,-62,-35,9,-33,-22,87,-32,10},\
+{97,-76,-63,117,-29,-82,-84,22,-36,72,85,24,70,-78,-114,-96,8,19,-110,21,-30,-37,-1,-77,-90,-62,84,59,66,84,61,135,28,-117,20,-47,11,29,105,-18,76,-71,19,1,12,93,-3,-45,-68,113,-164,28,-77,-53,1,-22,-18,83,2,-88,-182,3,-10,72,63,-51,-126,46,-54,-99,4,22,-47,39,83,53,-55,-57,92,-73,36,14,-9,-58,-34,-13,5,-84,-28,24,-66,-31,-62,-86,70,106,-80,-77,-26,54,-42,16,-4,-90,-88,1,51,-12,11,47,-33,-34,-10,3,-50,-17,51,-32,-113,-15,-4,-5,-31,13,-11,-6,0,5,-47,39,31,-18,-41,-19,38,-109,95,-80,-25,-43,-76,32,-35,-72,20,-132,27,143,9,21,7,35,43,-71,34,62,32,-62,-3,59,76,-73,67,-9,-96,-51,-19,65,45,101,-13,-146,58,120,82,88,78,60,-41,-97,-84,-6,84,27,-3,97,-25,14,-31,-7,-16,6,23,-35,24,15,29,-77,100,-90,50,3,-21,-29,161,52,49,43,64,-8,13,-4,5,-20,9,-41,11,-125,-66,-3,126,-90,-116,-123,5,25,16,86,-2,-49,41,-54,59,103,-72,-30,24,-67,16,-32,140,-19,29,52,10,69,66,21,-92,-6,116,-58,-4,-15,99,75,6,70,-2,-63,89,-1,-136,41,75,37,-62,-14,-59,-75,105,-41,96,-6,-61,42,38,-119,-57,38,-8,71,9,-122,47,-37,-29,-78,12,-81,-38,-27,96,-37,82,-5,2,-22,-46,91,94,51,-88,-32,6,-43,-86,27,2,16,3,-104,-54,-38,88,54,49,45,-34,49,-11,77,69,-13,-51,87,18,-47,43,-19,-77,-29,38,-59,-53,-23,-28,-15,-111,-80,-85,30,-83,11,69,49,-51,6,-101,96,-88,6,-12,36,-38,-26,-91,52,-65,40,-109,81,-18,20,56,-10,-14,-49,-47,16,63,-23,75,57,-67,30,85,115,77,11,-45,-58,-67,63,-141,72,26,148,-16,-22,-21,13,-93,-17,9,-114,45,-5,32,8,-90,-16,-7,27,-23,84,-25,137,16,-72,75,-22,-9,75,-47,-20,-81,39,76,-22,24,54,-31,-66,64,21,-52,-46,107,-21,95,-18,94,70,11,100,60,83,153,122,117,27,-19,-10,83,-26,-80,-37,8,131,-132,-108,-91,80,-109,51,-150,-107,-97,14,23,63,-13,64,24,65,-19,-60,-97,-11,48,2,21,38,76,97,78,25,88,25,-21,-35,-36,-87,34,108,83,-93,-22,-26,61,96,59,-99,-82,3,48,12,40,-95,88,19,85,-48,-96,-63,33,-96,-80,15,-86,-93,63,-24,75,-60,40,-52,-73,83,-82,65,-59,52,-33,-45,-4,-95,91,-2,96,-80,8,30,12,-83,-33,84,29,105,86,109,-16,6,-53,40,20,-50,119,96,-35,-50,-41,-11,58,126,-69,107,32,-118,-72,17,46,-67,-108,8,22,84,12,-27,-40,-117,-1,12,82,-74},\
+{42,-96,32,-4,-56,-80,-27,-62,2,-23,31,-91,-73,22,17,-48,27,14,55,74,-26,18,19,-30,-51,29,-108,-6,-100,-94,3,100,20,17,26,-39,104,-58,48,-17,-118,-61,42,-203,179,-43,58,37,-60,15,-78,59,-57,25,-121,-74,-23,61,35,-46,-26,-45,67,106,-45,-43,-145,55,74,13,54,-123,-39,-20,-92,17,-1,-122,21,-98,3,3,63,-19,42,31,47,-61,-2,26,-8,60,45,-22,-8,-5,-30,-28,-38,-89,34,-68,-26,-12,51,-95,-42,28,-98,-59,-30,-7,-16,56,-64,-66,-19,-74,43,-41,-74,129,-71,-41,-87,99,-203,2,2,-78,-70,24,14,96,153,44,-145,-141,-56,63,118,-55,-44,-163,-25,115,-148,25,-58,-184,82,-49,-102,88,-23,-94,43,-33,44,-51,-18,-112,-61,-107,37,69,-119,-11,88,-101,-79,-59,-67,15,-141,6,-106,-11,59,-67,-131,1,-58,-106,-67,21,-7,-53,-17,-15,-18,50,-41,-155,29,-86,-25,85,161,-83,10,-25,51,12,121,19,-93,-112,7,-60,-55,109,-111,-112,-63,-46,38,-21,-43,-84,-82,-148,60,-25,-2,85,11,-37,-22,-101,-16,56,-120,-110,29,43,29,-46,15,-1,-2,3,-39,-19,-6,-82,-70,-9,-76,-67,-195,-95,-57,-111,12,-94,-79,36,25,49,-28,80,122,-61,11,70,37,-51,-86,-73,-57,-25,-47,-51,0,74,-48,-51,52,101,20,-12,-94,67,-10,-52,-60,-115,-57,75,-16,-36,-39,52,-47,78,-72,85,-26,2,96,-11,-77,-22,104,9,81,-23,-14,43,47,-65,22,1,71,6,34,59,84,-53,41,69,-59,124,82,80,9,23,-139,-19,65,43,-47,-18,73,-71,4,-43,105,-2,6,-114,-14,18,126,-69,8,-36,-59,-91,0,-42,17,-56,29,-89,-20,-51,40,-92,-35,-101,1,128,12,-81,-80,-9,-92,85,48,13,165,40,43,70,35,28,40,52,31,153,100,96,86,74,-20,-23,109,44,-13,132,11,11,98,18,-105,-93,103,-31,-37,72,-32,89,113,85,-11,100,24,-21,25,65,109,-34,-101,-79,-46,119,-15,67,104,-43,36,-37,14,39,102,-28,4,-53,-68,-32,-11,-111,52,37,-3,-23,90,105,-44,-22,14,68,182,24,-8,103,-34,-50,48,43,-62,31,44,23,20,-24,50,-11,-41,69,23,62,94,84,31,-62,58,91,-8,80,86,76,-92,82,30,38,-18,46,-56,-88,-37,-13,-24,-27,-28,10,6,12,-40,-77,-63,50,111,-30,-31,-48,46,21,66,-116,-2,77,-44,-41,-36,-87,-54,-74,62,80,86,-11,-18,34,-74,43,56,-67,69,-21,-9,-38,-54,43,57,3,-29,29,65,20,-82,-29,68,-88,-65,-90,-46,31,-33,-8,73,-92,-20,41,-94,24,32,-94,24,-51,93,37,-55,-70,-30,19,-68,27,36,51,109,83,-37,-50,57,68,5,91,83,19,92,95,-124,-97},\
+{49,90,-12,89,70,-26,13,-25,95,67,-36,-76,-6,-52,20,-7,-77,17,-21,48,-100,5,76,27,-27,3,-103,-59,43,18,-114,-2,106,-17,27,-137,-105,10,-53,-217,45,-64,-61,-142,44,143,-38,4,62,23,74,20,116,44,-107,-34,51,54,83,-61,-15,-19,85,-136,-49,56,-76,-30,101,-28,-60,44,-78,-29,-3,41,20,57,-51,18,1,-64,11,-30,-56,-53,-45,-8,-83,68,-48,-49,19,68,34,9,-62,5,49,12,76,-2,19,-34,-20,81,-83,40,-35,4,-54,-61,-102,-66,71,16,55,17,-127,-65,14,-68,-74,84,-67,85,33,-20,17,93,75,-16,-17,-34,56,-64,-64,-45,110,16,-141,53,-8,28,41,115,-141,-6,-136,-28,-22,93,146,-6,-156,-60,90,83,-20,57,-87,-25,-33,-50,-73,26,35,-67,68,-6,-69,80,28,-93,-30,-28,59,-38,-71,-86,-51,79,-91,82,43,57,0,-21,21,-135,-95,30,14,-66,-103,49,-53,12,43,-24,-2,59,-64,-1,61,45,-119,62,31,-64,36,29,-55,55,-44,31,15,48,-151,8,86,-118,-9,75,-7,139,-23,-22,-9,85,82,-59,-32,37,96,-20,-37,29,-17,-42,25,-21,-37,15,-55,-46,-123,-56,-14,10,-72,-14,31,75,4,-55,-34,11,-9,72,-74,-53,15,-35,-44,61,-35,23,52,-69,-16,17,34,64,57,-47,-3,39,10,33,112,-84,54,-63,-71,-54,-82,-36,77,-1,-58,-30,42,59,-3,-20,-98,77,-3,-35,-16,-88,-3,-70,-4,17,-67,36,-55,3,26,46,4,-57,-81,-10,-75,41,-64,-61,77,-80,62,10,73,9,-46,24,24,85,-64,-8,78,5,68,-103,84,-10,83,64,-123,-94,44,41,-75,-43,18,1,-37,-66,46,-43,-109,-100,-112,53,69,17,-9,-46,-96,-59,-13,59,53,-72,-40,-67,116,24,23,-56,66,83,7,112,-14,53,-6,-30,5,0,-31,-104,-19,-39,-32,-34,49,13,143,-35,170,-47,-56,-11,-24,-43,149,63,-100,-53,53,-8,-50,107,-72,45,-41,57,94,-19,142,-61,-87,52,51,41,-61,8,-3,-95,-76,10,22,33,-66,-2,24,36,20,24,-64,8,26,68,-23,-72,-19,-109,35,68,-7,-107,83,9,3,-9,54,-7,58,117,88,80,-12,-62,-67,-162,-31,-61,-10,64,-71,-36,73,68,-101,67,-22,33,59,51,-70,-62,-94,74,-34,-126,33,-69,-49,-123,7,-95,-45,-65,-25,-3,-54,35,36,-19,124,45,-56,36,129,15,165,-3,-26,157,-140,-112,81,5,70,16,-122,-12,-21,-31,-82,43,92,-74,-75,22,52,-27,-51,11,-49,-47,-28,-95,42,33,45,-20,21,7,75,67,82,-44,81,54,-59,123,-122,-38,-42,0,89,31,-5,50,115,3,11,19,-37,-19,83,-87,1,28,96,50,173,22,10,120,45,0,-80,-74,13,139,134,25,-93,64,-77,85},\
+{36,-99,-31,75,-46,-59,55,57,-6,-47,8,20,26,20,-105,38,-36,-98,54,-76,-97,-81,-84,-35,23,-49,-43,50,79,-105,65,-55,89,43,-37,21,56,-89,6,106,-34,-43,-6,-83,-69,-12,-84,-32,-118,-1,32,56,50,-77,-7,99,-35,-91,68,-149,37,88,-68,-71,39,-184,-66,-29,54,35,-47,-50,-8,0,16,70,-75,92,-43,-78,-10,-54,-60,-62,70,2,-11,-92,15,40,-84,-2,69,42,-23,79,101,-15,-82,-80,63,24,12,-82,98,-58,-78,-43,116,-19,86,-76,83,65,-34,78,73,-14,-31,37,-48,91,37,-25,-9,77,-64,30,36,54,-2,-102,-113,-61,19,110,-154,-63,-61,67,34,1,-145,-15,13,91,-58,1,-72,20,40,68,-29,-59,71,2,-9,-99,45,-92,53,-48,-16,3,57,5,17,21,79,77,48,63,-68,56,-29,-95,10,-9,-3,-61,-16,10,99,-75,79,43,-61,0,14,-30,59,-66,-96,114,-26,-69,-15,-52,81,68,-51,-18,-70,-16,-31,40,62,-24,55,-48,-32,-11,53,26,38,23,103,26,-70,22,15,-45,48,-3,-8,-139,-90,36,22,19,6,-70,-33,-31,-31,-87,-101,-85,71,-96,45,103,14,47,50,52,-38,-93,51,-32,44,-9,-28,82,88,-43,-88,-78,-49,10,13,60,36,-54,-56,26,36,-95,-49,-43,48,-42,-72,-27,72,-115,100,-75,-31,53,10,-57,-54,-23,-41,2,28,-42,-83,-72,-95,74,39,45,-98,-12,-51,46,52,-10,-21,-9,34,-71,-51,101,-83,-74,-54,9,21,-87,-38,45,-62,66,-32,28,-12,-26,73,-68,-27,24,58,-20,-18,57,-90,-1,49,28,10,-16,42,-5,33,-48,10,-5,-100,-47,-12,57,-2,66,-52,-27,4,52,-95,-61,-52,-58,-109,-18,-6,-83,-63,-70,-44,-18,105,110,-39,97,-77,38,91,-4,-12,-15,45,-128,-67,-27,-51,2,-65,-68,-20,-79,-21,87,16,78,46,-30,95,37,8,-91,12,65,-95,45,-19,-44,-36,127,-1,-54,38,24,13,68,-64,-56,-98,-78,-60,23,-43,66,69,-67,-50,-13,29,-62,114,-48,12,-92,-6,-24,126,-29,-24,-114,22,-78,75,-75,-65,86,-59,7,89,87,29,-52,84,10,-6,36,-25,-10,18,94,-50,-51,95,-97,112,41,93,88,72,-3,160,-44,30,-31,127,14,54,42,24,-21,84,105,69,-79,-92,-58,-25,34,-107,40,-6,54,67,-116,64,-61,49,-16,-35,38,16,22,-8,-86,97,-44,16,36,-86,76,35,53,-11,-98,-35,-9,59,-81,86,16,-36,-63,47,56,0,14,-30,30,-64,-10,-64,30,-22,-93,46,17,-63,97,-1,55,-90,84,11,-17,-7,-19,5,-28,-52,50,-7,100,59,-28,83,90,93,12,-93,-3,-5,67,-21,-15,-86,-82,-111,95,-58,31,72,-29,-100,20,58,80,-41,-44,-35,-69,68,67,80,106,-49,-34},\
+{-46,-8,-46,-9,-74,2,46,-23,61,58,-64,-9,-41,142,-78,32,27,89,-22,51,-41,-59,35,-33,-54,-47,-3,64,15,43,-37,-94,-60,-58,-51,82,57,-60,-52,17,2,29,-9,68,60,-62,-43,-46,118,-98,40,12,95,-34,116,-114,-5,10,-40,-118,165,-64,24,1,-90,-96,-1,44,7,22,25,-118,-31,-62,-49,11,13,-26,-80,-25,3,-24,-26,-93,-84,14,-73,-13,77,5,88,-24,79,27,89,-52,-26,-39,-76,28,-19,53,-11,-30,11,-98,-53,-23,-73,19,-18,-63,23,-0,8,-28,83,-162,-49,98,-90,-91,64,69,-15,48,-20,-24,43,95,8,13,133,-38,180,27,-46,41,-71,-142,45,-6,-140,-38,12,62,-0,91,-86,-54,-63,150,70,58,-43,9,-59,65,2,-63,-171,-8,17,-2,-136,-8,44,-73,-103,97,25,-2,-77,-78,-45,-39,68,52,63,0,-7,45,-101,-85,17,55,-67,101,-124,-70,29,-64,-13,-116,-131,-80,-34,-35,6,110,59,-63,-97,28,15,-7,-53,62,-23,14,84,58,-67,90,57,23,-32,-16,47,-21,-143,-22,111,-65,-82,75,-15,21,12,71,-35,-87,-88,120,-5,4,-23,-9,53,60,-15,110,19,9,-18,-76,-7,-69,-18,-76,15,3,75,29,-120,27,-35,41,-22,126,-65,24,-135,81,8,25,-38,-53,-17,5,-47,79,109,-104,-69,56,10,-29,-38,-7,-92,46,45,-58,63,81,-20,44,86,13,39,-51,-63,-58,-24,-0,-91,20,59,49,80,-90,14,78,3,48,61,-95,80,38,43,36,40,3,-12,8,77,52,77,70,71,-56,-61,-34,-15,19,-12,-15,-1,57,59,29,-42,-46,-49,-3,142,58,51,-21,89,-49,58,-63,-96,-23,-11,67,113,-26,-93,50,-67,-139,20,73,-50,45,-59,-114,52,-45,61,-15,-51,-13,-73,41,25,16,116,-22,-11,79,-62,146,-56,-102,-79,-11,88,128,88,-24,123,144,17,-82,-22,94,-23,-42,10,3,-50,8,32,62,62,-61,-11,-89,95,-63,-34,-2,8,82,119,-15,-127,-85,-62,-42,-58,73,99,-9,28,21,-47,-9,-63,5,-1,4,73,22,-15,69,37,-56,76,73,-28,-35,-29,-3,81,-2,-86,92,2,-67,75,63,26,-23,9,-11,-138,-29,113,6,54,125,5,155,44,-58,-36,19,43,0,-92,8,-16,51,-21,-15,9,-59,-75,-15,98,142,-134,8,-18,131,-63,-76,-76,27,-105,87,-67,-26,17,74,119,-67,95,83,-15,-34,-57,-92,-83,15,-18,-82,-22,-107,-71,46,88,-62,63,-22,28,71,43,60,107,-95,-9,71,32,8,-46,-94,32,94,-95,-49,-57,53,-63,31,37,60,-51,71,-36,-42,-64,16,-5,-30,90,90,-2,-51,47,-1,76,-22,-33,20,-72,96,100,85,-2,84,0,74,59,-57,-27,-61,122,-14,68,-127,-32,-29,-61,24,-53,53,-6,50,49,-77},\
+{60,-68,9,124,94,46,-99,14,64,-99,128,-29,24,-2,-55,-35,43,35,-2,50,-95,-50,58,145,-10,-138,35,88,-117,41,-44,-92,-1,-64,-107,-106,83,-119,-176,-64,-213,165,23,49,-26,-183,-196,66,-116,-70,-39,-93,122,115,-1,-40,55,-71,73,19,-24,-28,72,54,-63,-41,-118,-84,204,-93,-28,4,-54,30,-32,-30,50,57,-29,-30,-53,-8,-87,-56,38,-22,-29,68,71,-109,-104,-67,27,-68,28,-43,72,-94,-4,-56,-7,-0,56,1,46,36,56,34,148,-99,-33,-57,-169,-46,-93,-99,-64,-68,-172,43,-4,65,-49,-36,-34,103,-23,-133,29,36,119,25,37,7,18,19,78,143,136,-130,117,-89,-16,50,-23,-151,124,-61,115,104,21,-156,23,42,63,37,100,-20,-62,40,-12,16,95,-75,-26,-5,-8,25,6,-94,-49,-12,-22,21,-44,-102,94,-29,27,-27,-10,-213,15,-42,-31,-59,-49,-101,-78,79,10,36,-65,-152,20,108,-15,53,4,48,-67,63,-69,71,38,-78,-13,-27,39,-68,-6,-42,54,-9,-150,35,105,-31,174,-229,5,-38,-42,-117,36,86,148,94,-12,112,4,80,-32,36,22,-57,-134,-16,66,-36,-31,-124,-39,46,-18,-102,-74,-93,-75,-42,-48,-151,106,-172,120,-128,-20,31,25,-95,-116,6,-54,18,-8,-41,-28,-39,-48,19,-109,-36,72,85,19,87,-69,44,-30,24,-35,-72,-33,-50,57,58,8,-119,-10,-32,5,-97,-32,15,-48,8,32,-26,-58,71,-8,-12,-28,-3,77,-80,-59,26,12,8,66,70,43,31,-34,-82,-49,51,71,-10,7,46,22,4,-69,49,-55,75,-27,265,-23,33,-69,-128,-5,128,71,-75,-79,-45,13,115,-49,48,-34,-79,-79,140,-12,-149,-119,8,15,-57,-13,-67,-6,40,51,-215,-11,-11,-34,74,27,-29,20,87,3,69,108,161,118,98,30,-85,48,86,44,142,43,-90,123,35,124,28,-84,-116,58,121,34,-5,-86,-153,76,35,-24,-64,18,31,30,-64,-66,-52,-89,36,23,-64,-5,122,-97,-82,-30,117,73,-78,-40,-50,-5,-29,-3,27,18,-26,-67,-80,-41,69,-85,-81,-45,-19,-51,4,250,213,21,27,18,52,147,-1,75,92,127,-45,5,79,103,132,-21,-113,27,-34,29,138,23,-89,-90,-37,18,-22,81,26,-71,-90,-22,-26,86,-32,37,25,44,-64,34,-72,-101,-3,-35,-77,27,-23,-90,-37,66,37,-79,89,60,-45,109,-7,-16,162,37,-47,12,7,-23,49,-60,10,-110,16,-79,-69,-92,47,62,-34,-70,8,-79,-83,61,-5,-78,93,0,25,-16,-16,35,-83,57,-60,69,-3,-68,14,-7,-59,0,-6,44,15,-28,87,18,134,-21,-13,2,-61,41,27,-57,-149,-10,16,-100,12,-3,11,30,36,-47,10,-74,31,58,-16,59,-4,-11,150,-15,-11,106,158,-114,97,-111,-29,59,27},\
+{-12,5,-6,44,-4,88,4,31,-97,44,31,60,-2,21,64,-75,-75,67,40,52,47,58,21,-75,118,-100,-103,18,-69,81,84,-84,8,58,-1,40,-41,-61,166,-89,-87,74,69,-79,-5,-43,-32,-97,-48,32,93,-77,-92,81,-32,-11,-67,-18,3,6,38,-82,-54,104,180,84,131,10,42,-101,142,45,-76,49,-31,27,42,-25,7,-55,-45,-7,5,-63,-65,-11,9,69,-82,76,-88,-5,63,-36,-99,-51,-69,37,45,-87,-18,-101,-113,7,-30,54,30,-17,26,-5,14,90,20,30,27,30,75,69,-6,-106,94,18,33,-73,-88,-83,-29,33,-33,-17,-16,-106,43,-82,-83,-66,48,-141,-28,-54,78,46,115,44,-120,-1,-69,128,-125,-47,65,115,28,54,-80,157,-58,25,3,-93,-29,-90,-32,77,33,30,-15,-61,11,19,-55,14,-81,25,92,172,-24,-29,-52,26,-9,-63,17,79,-67,68,82,20,84,-88,64,14,-43,-0,-24,-93,-46,9,63,-29,-29,-31,-54,-44,38,-79,-65,12,89,61,28,-9,-15,-55,102,62,-61,-29,-136,108,-38,33,-123,84,106,-83,26,113,45,21,-24,-55,-36,-15,-8,51,106,-93,-96,73,100,-65,-46,-6,2,23,-32,34,-84,98,111,102,-52,81,76,44,-11,88,-14,32,103,50,16,-62,-11,68,-35,39,18,16,13,46,62,4,-103,-73,-65,57,-75,-35,53,72,84,-19,42,-45,15,74,-83,-18,-56,78,50,-73,-85,42,-0,-75,97,37,45,86,-63,63,-67,11,91,-26,88,-99,52,17,63,54,22,-16,41,70,-43,-84,-81,-84,80,-70,-43,59,67,-94,2,-79,-12,-119,63,20,-107,92,-54,-73,-74,-20,-7,-52,63,80,-82,18,-82,-14,49,92,-40,24,36,62,-31,-80,95,-15,36,39,99,168,118,15,110,-21,-45,-37,-48,-89,-85,5,102,80,-23,67,-21,-9,-43,82,-58,-100,-146,-39,34,-31,-42,108,5,-89,-18,-3,-5,78,2,-56,61,-93,12,-28,-55,-33,-64,43,22,37,-6,-75,103,91,60,-41,-69,-97,109,127,4,92,-111,-29,46,70,59,-131,119,150,-26,45,11,-86,-16,-70,137,96,-138,-77,106,-44,-34,-66,27,-29,38,-34,103,49,-118,34,98,13,154,67,31,-123,46,56,46,188,-43,-1,-48,46,82,51,-70,-0,-29,50,64,56,41,5,100,103,-22,-41,18,-80,1,41,-6,95,-9,-17,-72,-51,13,-46,35,-41,-85,65,-29,60,-115,81,-67,-25,-72,4,42,-54,92,-82,-28,75,57,85,-40,-17,-52,48,-73,-81,-46,-90,5,-36,-55,-4,69,-107,40,-28,20,-82,-56,-92,-65,19,-36,-51,-56,-12,-13,-53,-85,39,54,-33,81,109,51,16,53,-20,68,-120,31,-83,75,-13,81,23,-85,-81,86,69,134,-50,-60,-74,-100,-42,-75,-35,71,85,49,-128,-64,-77,73,128,104,-65},\
+{5,30,-64,-77,-13,95,-22,-112,30,-59,-81,57,-20,43,-13,59,75,8,-9,-67,-84,-24,-62,106,91,-100,-111,-86,-25,55,83,-61,-47,75,-83,12,-74,-58,-33,108,-73,123,37,22,-37,-49,72,-93,-118,-20,-81,47,-60,78,77,-21,13,-59,6,45,9,-2,-17,-21,-92,-14,32,-7,91,9,-16,-52,78,75,-81,56,71,72,-48,10,58,30,-28,-41,-29,91,78,-6,-16,-76,-11,-21,89,-10,34,-36,-10,-59,-81,94,89,82,-57,28,72,78,31,43,102,-82,69,52,-51,56,-22,-8,120,-64,-5,-7,21,27,105,1,-32,77,70,-127,-116,-38,71,-73,39,9,-49,5,-22,114,11,26,-92,-6,123,-0,98,-118,-72,58,44,16,-13,-44,71,-39,86,-135,-82,-98,-24,-41,13,7,72,82,66,20,14,43,0,-69,-28,6,-15,-45,-26,-2,23,139,20,83,-47,41,85,-78,3,-72,-10,-77,-24,-93,63,-78,-43,51,-43,-44,-36,-48,-115,-12,27,8,-7,82,-27,-82,-61,18,-57,-28,-56,-19,-71,-74,15,56,62,-160,33,-9,4,54,-62,-111,77,-48,5,-120,42,109,87,-47,45,24,-40,-49,-18,19,-97,-38,-34,11,24,-105,-22,78,-1,20,-103,101,115,114,67,-32,71,122,16,-79,61,-56,54,9,140,-50,-50,66,-42,-81,89,-62,-43,-46,-99,79,-18,4,70,-124,-91,-78,-20,-16,-58,24,-79,12,-28,49,56,-46,-15,-9,-85,-6,33,77,-34,64,-51,-103,13,-45,62,48,12,-26,-78,-26,-10,92,41,-34,35,21,9,-97,-85,41,-8,-21,-49,34,-15,-101,-43,-90,-49,-36,-35,64,25,-38,-106,32,5,-17,-99,-19,-62,14,-82,-72,57,84,-28,42,90,-84,19,-33,-52,6,54,5,106,-9,29,-91,-61,39,-30,81,54,24,-56,-3,40,-32,-9,105,50,-43,108,-96,-31,-40,-52,10,-18,-58,16,-80,-14,13,45,64,-49,-100,-85,16,73,55,41,103,-15,163,-73,16,0,91,37,-131,-99,30,-25,-102,-13,-6,109,-90,51,-13,32,-64,54,15,-79,-37,-66,-100,12,-3,-57,42,109,131,-42,-100,-41,-33,-77,91,-31,158,-18,105,-39,36,29,10,16,89,-79,126,-47,-75,106,-32,-90,92,111,79,49,24,51,-3,-25,51,-57,-15,58,3,118,-84,-77,-10,-139,79,-11,-15,106,-26,-48,-75,38,-46,-38,66,109,-4,-38,43,43,26,76,21,46,39,50,87,6,-27,-36,-77,24,32,64,-34,-46,17,-62,36,112,-13,9,9,-58,-25,1,-46,43,-80,100,73,-85,-46,-67,77,-66,-17,18,-37,23,-56,-77,16,-50,-58,73,28,91,99,-32,21,29,3,-49,61,-23,21,-32,-39,-12,-15,-68,-38,94,-67,99,5,79,47,25,63,149,-112,129,-26,82,13,115,29,76,-20,-41,-80,-60,-171,89,-53,44,-52,-38,-79,79,91},\
+{-76,-63,-85,-23,-54,27,37,-82,-50,68,64,49,21,-11,-6,-76,37,47,-84,-105,92,-30,-66,-69,15,82,38,-64,31,67,123,19,15,47,-51,51,34,-65,-54,124,8,41,17,17,147,64,89,64,106,-2,-58,36,-80,65,-69,-77,-27,-96,-50,-74,-102,29,7,-23,10,46,56,45,116,27,46,146,5,1,-32,89,-12,13,-33,-9,-8,41,-19,-98,-4,25,2,-41,-63,47,69,-13,83,84,-75,25,-16,-57,-31,30,61,-120,-60,30,91,-58,-13,45,-58,-113,-28,1,190,91,32,-106,31,56,34,53,18,-4,99,5,-19,125,71,-18,40,91,-21,24,33,-42,54,69,-48,77,105,44,-22,69,22,100,52,-0,48,-102,59,192,-108,148,-13,95,90,5,95,57,56,75,47,81,-154,-28,7,38,19,15,-12,34,-24,64,47,-22,51,20,1,103,101,38,-146,74,22,-25,46,19,-51,-42,-57,20,99,-71,-20,-29,-110,-22,4,3,-86,-71,74,85,41,79,-61,55,-5,79,103,10,-45,-13,93,55,-65,86,-135,-117,55,-60,11,9,-86,-32,4,10,175,87,77,61,63,-106,80,157,33,-29,-38,-44,-13,68,144,112,24,99,-12,75,237,104,-2,-36,6,53,-177,80,-112,-15,94,72,27,1,48,91,13,111,10,5,-20,-34,-79,-45,30,22,-15,104,79,117,-34,-81,-63,-8,-40,-18,118,4,-40,29,23,97,40,-23,-42,42,-6,31,59,8,96,-17,26,-47,74,-11,-11,28,1,-28,54,-40,-85,9,33,23,60,-86,67,7,-39,-95,-89,-73,4,58,67,-114,3,-8,-153,-108,-55,-105,91,-94,84,-61,10,53,43,77,-60,-88,64,-34,139,1,-57,85,-19,44,52,129,67,-101,-61,20,96,31,152,58,-5,109,24,-53,111,-23,124,-102,-73,-67,42,99,94,25,-3,-7,-76,-46,-35,-61,-48,-66,-12,-59,-79,15,-60,11,91,95,65,-51,-101,-9,7,-118,-122,-102,-19,-41,12,50,3,-1,-62,65,66,-97,-11,107,103,-69,-14,28,-27,-6,32,-109,-101,-68,-33,-10,-96,1,3,54,-78,-77,26,-3,31,7,14,-70,-77,99,-46,-27,-49,-44,61,-57,-6,-15,-21,55,-25,-5,22,42,-37,41,-125,48,-51,-52,-37,57,-81,-43,1,-55,-58,-38,47,31,66,92,-128,-57,-91,-14,-83,52,68,-56,2,-51,-74,-3,-56,0,-40,-52,-11,35,12,25,-50,-89,64,103,29,20,-64,25,-4,75,-39,-14,55,9,99,-90,69,78,-71,24,-51,-27,50,-75,-32,4,41,52,82,-56,33,-26,-28,-86,-59,34,-15,67,41,65,-31,15,59,1,41,44,-9,-10,-40,-68,93,-16,-18,-87,27,-27,-84,64,-63,9,-22,-70,35,35,125,-43,55,38,82,-8,-84,-56,78,21,-63,133,-92,-24,3,-80,-37,89,-30,-72,95,39,44,37,-75,84},\
+{-79,-41,74,20,44,-2,-27,-103,-48,-30,-62,-97,47,-25,-93,-32,9,36,89,17,-63,-39,27,14,-23,69,-82,64,-9,73,-3,-60,-42,-13,106,-66,-77,-15,-29,77,-2,-54,33,97,-33,137,48,-13,-45,72,-43,119,104,-40,40,-13,-125,-40,5,-98,53,-31,-63,-65,9,-8,-90,-89,4,73,-42,-106,58,-33,-6,-47,47,65,-77,86,97,71,-77,-30,38,-23,-52,17,83,81,47,-24,-5,21,66,5,-30,17,-26,-27,-44,49,47,-72,15,-58,-52,-88,-38,11,-29,136,57,-63,14,5,-103,81,38,88,37,-0,-144,84,-80,122,63,-67,-13,-55,-24,20,104,22,44,62,-101,-88,0,-65,-70,10,-117,53,-85,-64,13,95,2,-16,11,-63,16,-44,-156,-93,16,23,49,74,-115,40,132,2,72,43,21,-61,-29,22,-9,13,31,11,-101,-57,-84,64,-20,-1,-100,-24,-94,-18,-56,-21,91,56,68,-26,3,-49,151,-115,-22,149,-51,-69,-41,-3,45,39,87,-76,60,-94,59,-48,68,30,1,-92,-27,-50,-79,91,21,-119,-89,-48,-106,-24,-75,-100,-50,-26,-53,-43,15,-9,109,-17,-62,-51,115,75,-75,87,-17,87,39,81,21,39,67,1,-111,-46,-65,-65,-31,4,17,-44,-14,62,45,70,-26,33,-22,139,36,30,-36,-28,-12,117,9,20,-22,14,-21,-67,-4,-88,-87,-59,78,101,-74,77,16,-11,-63,-65,-53,-54,-3,-8,91,-42,58,86,20,-17,63,-49,-96,-41,39,-16,-35,93,-25,19,67,60,-25,-85,21,-70,16,-52,-59,16,-96,-21,10,91,-65,72,-58,74,67,-107,19,25,-23,21,39,-43,-99,75,-30,-99,-23,48,-104,79,-10,76,3,-8,55,52,49,31,47,-100,65,-33,77,18,15,-80,-95,-107,0,43,40,25,-32,-21,17,47,-22,-58,47,-85,37,16,30,-10,-48,-15,-22,-63,-52,-37,65,88,-17,-91,-46,-80,48,46,61,-0,-16,-50,62,-33,105,-18,-39,95,-116,44,-80,-63,-51,-79,85,-37,-9,-6,-75,44,-45,-21,78,-83,90,-79,12,0,37,33,13,113,-15,-86,30,-37,-36,34,83,6,61,-65,18,7,-62,60,-13,-51,-15,-8,57,-37,6,63,58,-12,17,50,119,21,-47,22,-87,-4,-7,-61,85,46,36,-88,38,-46,-33,-24,9,-37,68,142,50,91,35,25,-71,95,80,-43,-6,66,27,51,19,-88,77,-60,-76,18,40,-36,89,7,31,-59,-4,41,-16,-34,-84,-32,75,-50,-75,62,89,14,81,57,97,102,-42,38,39,-10,88,87,-51,-77,39,26,-19,47,51,-50,28,26,55,69,19,-57,49,20,-37,62,-65,-60,52,82,24,68,51,93,8,94,46,42,-86,49,-5,101,-67,88,59,0,-11,-95,7,94,62,24,-56,-49,13,20,116,11,-71,42,89,-97,-50,-33,-111,-47,-60,87,56,33},\
+{69,-49,86,-47,-18,-85,-66,77,52,-22,-21,68,27,-47,6,-89,-19,42,-15,-88,-71,-51,30,46,-9,-95,27,-69,-36,26,-68,108,-64,39,73,103,-36,63,60,86,73,-90,49,-120,-72,154,91,-65,67,-150,-52,7,67,-71,104,-79,74,147,-55,44,-23,-103,69,-5,76,94,-80,-88,-10,104,-22,-122,-38,75,-81,-76,43,-6,73,39,-53,-46,59,-41,-58,92,43,9,5,-83,90,-58,21,-80,-44,69,18,-55,-54,-19,61,121,-92,-19,-51,24,90,-65,-78,114,-26,35,48,56,-15,33,-183,-103,-62,-82,-79,29,-29,-53,86,-66,-81,3,149,-73,19,39,37,-123,-34,-57,-71,112,-50,-49,-40,12,92,18,110,73,8,-151,-111,1,99,24,57,69,-11,-101,-18,-118,25,-75,65,-109,100,38,-8,-12,-21,-3,2,37,41,-114,79,53,-4,80,-90,-26,-29,-44,30,-90,-12,-82,-97,-24,19,-60,-18,69,9,60,0,25,18,79,-51,-88,47,40,54,-3,77,41,37,50,30,80,20,63,11,16,36,138,-15,-46,52,86,163,-94,54,65,-5,118,52,-22,92,59,-45,-68,-40,-108,-83,-108,-73,-28,51,34,8,8,-4,7,53,-63,48,94,88,46,-69,-35,1,-74,-53,48,82,-26,68,-52,-39,28,24,6,29,-101,-47,-64,72,29,-94,-11,-20,105,14,10,-6,70,3,4,-38,-63,-27,84,51,117,-37,30,-18,-37,-53,13,-80,93,-65,24,3,6,59,72,-21,57,36,-68,-13,9,-59,65,-29,51,42,-10,50,24,-86,-79,-30,-79,63,49,-89,75,17,-29,-13,-3,49,29,86,19,-63,-85,-114,-50,-45,64,125,17,-15,13,-35,3,14,-120,-9,-133,-96,-48,-4,-27,-33,-14,-12,36,-50,105,114,-60,84,-67,102,36,63,-61,35,11,-74,96,103,-70,-68,-27,-70,-5,11,37,77,11,-58,-20,-66,-23,123,11,50,-109,51,56,-91,59,68,70,-21,68,113,20,49,-37,57,-90,-102,30,31,52,-51,76,28,0,-51,-65,93,-57,51,-22,-18,76,-10,-26,79,-18,9,-34,39,105,71,49,15,65,-23,-73,-73,42,-91,11,-3,-12,9,36,-80,-55,-77,-123,139,91,-76,119,58,26,-18,-30,-150,187,18,-111,-36,-25,-102,-112,-76,8,-171,17,24,-26,93,15,-177,-194,111,-10,-51,39,-47,7,-8,45,46,50,18,-38,75,41,119,79,48,147,101,109,-25,37,-70,-37,49,-14,10,-2,-66,111,-88,-73,-3,3,-52,79,50,-61,-33,-87,110,66,-71,-115,83,47,81,16,40,34,63,-75,-68,39,32,-14,5,-61,84,-8,-60,-30,-19,-25,-0,-67,102,11,-13,27,83,48,35,-28,89,-102,88,95,64,-44,68,-93,65,73,25,33,-56,37,15,54,-33,21,-75,53,15,28,72,-132,86,-132,49,94,25,-60,-4,19,-100,134,-17,-15},\
+{57,10,35,63,20,77,65,-83,-77,51,-68,-31,-21,23,-90,55,78,-11,-35,44,-47,-25,-74,-35,-44,-71,-38,-63,63,-85,-13,48,1,12,-95,92,71,67,48,-6,-32,-86,42,-60,87,-83,-32,48,-36,-76,13,4,-65,60,-30,-40,-48,94,-88,-64,30,85,-30,-65,68,-3,-84,-67,74,87,33,41,20,2,-78,80,18,-50,-59,82,75,27,17,7,-41,-13,-69,29,36,-36,36,-36,47,82,-68,-52,-78,87,29,43,-69,64,-49,17,-63,-77,-37,55,-51,39,-52,44,30,-9,57,27,-57,-7,-95,-95,-61,-78,80,8,-69,32,-32,-12,-38,-4,-67,55,-44,39,22,-82,-6,61,54,-83,-45,-50,4,78,10,-52,38,10,76,82,76,-84,-80,-55,17,33,-56,-43,67,-74,-34,-58,27,10,-90,62,24,66,49,-86,-14,-14,18,87,80,-1,65,-79,-48,-32,50,-29,-73,-47,61,-48,70,36,-39,27,-39,-19,37,43,24,-17,17,-70,3,9,81,-70,-63,-13,52,-65,-40,40,87,95,36,37,48,-13,-32,64,-22,37,-60,91,-5,-48,-66,-62,-33,72,65,18,-54,-55,74,68,54,48,-89,5,57,62,-60,-91,18,-31,-95,-22,41,2,45,-84,-52,-76,31,-51,-78,-28,41,74,87,74,-6,-37,86,24,55,93,55,-48,-80,-53,40,-84,-48,16,-96,68,15,-76,59,68,58,-71,15,-93,-97,30,-45,54,-16,42,-38,-13,-52,27,65,66,-60,49,59,45,-74,2,-11,-24,-31,-26,65,-18,16,28,-39,47,-86,-33,87,-67,27,37,81,-25,40,62,-0,-84,-53,88,90,28,-27,-76,-23,80,-2,61,-62,67,-4,-92,31,-96,-65,61,-48,-55,3,30,46,-27,-87,16,-91,73,-56,-55,-90,-0,58,9,-31,31,-61,92,-43,-21,84,4,61,-77,34,-49,61,-92,5,-62,-70,-66,59,37,84,-85,-51,77,-84,54,-69,-25,-33,1,-29,-93,-17,29,-85,-4,-32,47,14,12,58,88,-34,94,-84,78,-82,69,47,-10,25,-45,65,61,-45,14,67,-65,7,48,-37,68,63,42,-77,-51,27,-16,-13,2,41,-30,44,78,22,23,-17,-29,-77,-82,-74,82,-88,-94,-81,63,-92,-12,12,42,-58,-48,-79,87,-7,80,-76,39,68,29,48,-74,35,74,-10,-94,-82,-81,-84,-92,-96,-33,85,4,45,89,-20,45,59,-84,-38,-5,-51,-30,-4,-61,1,-10,21,-60,-66,-91,36,-60,76,5,64,-86,53,54,9,-34,-80,-26,81,-78,54,13,49,-41,43,-30,-40,-32,10,71,18,-17,-83,8,10,8,-79,-32,-50,90,-32,-76,25,-88,-58,-82,-77,85,-49,-74,33,-69,-13,-23,-28,60,-88,82,-46,89,-78,-48,77,-84,-76,-67,-89,-56,-12,2,-7,-4,41,-17,-90,18,-51,37,-59,14,41,80,-12,59,46,-54,22,-27,35,-43,47,65,-98,87},\
+{-86,-81,-10,-53,89,44,49,-40,75,4,-20,7,72,-63,5,-38,-73,-21,26,-22,21,34,138,1,34,10,42,-58,28,93,37,-9,-85,-101,21,121,12,35,46,-26,-107,81,47,-62,113,13,-48,-31,65,28,31,62,-73,11,-85,152,30,55,131,80,44,-11,-4,-24,92,-7,-99,115,-118,78,61,-31,88,81,13,83,46,-22,-60,88,62,-18,19,-54,-62,-74,107,19,52,-120,-1,47,47,75,-49,-95,31,-47,-70,62,68,27,-79,39,-13,59,31,67,-97,-90,72,9,-33,-39,21,45,-7,-47,17,-41,11,36,34,-69,-15,-63,111,142,-8,-47,-64,-9,46,-71,-62,128,-99,4,87,45,-31,27,-25,-31,-25,-95,-9,-68,46,4,-102,33,24,-13,-21,96,133,69,-71,-56,59,151,121,-64,-103,-104,-53,37,74,10,16,-49,-111,55,78,40,14,-34,3,36,-101,-38,60,23,-2,8,-54,52,31,-0,129,1,106,2,-19,-67,17,-34,117,-140,-35,47,28,33,39,-1,28,11,4,52,88,-52,-39,43,2,86,34,-106,-27,75,68,16,-80,-82,40,-14,60,109,59,77,-69,-94,7,121,155,-14,-5,68,10,-28,59,65,-6,-39,-112,70,165,-128,43,5,-100,32,-101,-85,-36,-29,6,-15,-81,40,-35,-85,-73,41,19,-106,44,87,-47,100,164,-71,20,91,-36,2,96,-130,-20,97,-30,-82,11,-51,46,68,-54,-44,-44,-29,17,-24,-71,-79,-36,61,69,-9,86,22,-4,84,78,-30,4,-83,-73,-46,-19,-68,69,8,-0,-59,92,-16,2,31,-13,-45,-94,62,-66,-35,88,-102,-73,-42,55,9,-2,-112,-55,-88,-94,-104,-1,-39,-30,53,-61,-81,37,32,72,99,139,-16,-65,93,67,-24,-7,-14,14,48,20,-10,88,41,-75,-19,-82,-81,50,-81,97,-56,-57,68,102,23,47,-85,-14,93,119,119,-125,-22,-24,147,-0,69,55,-154,55,17,28,1,68,22,7,93,-96,-43,-29,-38,-72,58,-157,40,7,1,41,-57,74,-52,53,18,90,12,19,73,-62,-33,-65,16,-52,55,115,4,-25,-24,44,-70,89,-27,1,-13,-87,-34,-48,-62,-2,-18,-27,-2,67,-76,-44,94,-22,267,-11,41,65,28,21,137,-100,-17,69,-2,-73,4,-13,-88,-14,28,-16,25,-0,-32,142,-82,49,-26,27,-6,-61,-76,-14,88,-30,-3,2,19,-130,79,21,-82,30,39,17,-12,-74,-96,-40,2,5,-33,76,-87,15,-30,-82,44,-57,17,96,33,91,4,75,-78,-16,-79,48,-41,-12,-45,82,1,-94,-88,-41,-10,13,-30,52,36,-98,-35,33,-17,-10,50,-54,-3,38,81,-44,-72,8,16,-16,-46,-21,114,139,-101,-104,-44,-79,4,0,-66,45,31,5,97,-45,-62,-19,-54,-42,57,16,52,61,67,-33,-14,-3,-74,54,58,-17,-53,-51,-116,20,93,-42,-78},\
+{40,-15,-78,-69,-32,78,75,-43,-77,50,-78,-50,64,-74,57,-86,-42,62,42,-31,-57,4,-66,25,1,9,-48,16,27,89,-86,73,81,-78,-36,-16,-88,-41,-60,4,-8,35,-19,-45,47,-64,-116,-30,-42,-11,78,-28,-86,105,67,71,7,45,-31,-19,88,55,-23,-93,98,76,-51,-21,36,45,-72,-95,-93,-24,-56,-19,3,70,-9,-46,91,-59,-65,-38,-81,29,-67,-2,78,76,67,-88,-75,37,-79,82,3,-49,53,31,24,78,61,-44,-45,49,-65,-37,-20,92,-54,64,-48,4,-39,-35,23,-67,-50,-61,64,-63,-42,-6,3,3,12,-9,78,39,-79,-29,26,36,101,62,29,36,-70,71,15,88,1,-140,-23,-61,63,-52,41,-80,-77,46,-35,-15,34,-27,86,-72,-37,-105,-50,73,61,25,-29,-40,-95,-55,-25,-13,-46,-83,-23,-69,-3,-12,-42,-32,-10,88,-20,43,-41,59,-38,66,-1,87,-54,19,78,59,-15,25,70,-50,77,-93,-26,-101,-23,40,-5,51,-40,12,2,-4,4,-66,-106,-33,71,98,-30,13,61,-81,-6,-70,-17,91,-19,-7,54,49,-61,18,63,-68,-50,-5,23,-58,62,63,-32,7,43,16,53,22,-64,-29,-0,41,29,40,-93,-46,-67,-61,-36,-83,-111,17,-15,40,56,-105,-13,34,59,-47,-45,-47,-81,-24,-72,-58,94,23,-56,63,-44,31,28,-45,25,-27,-32,-47,8,7,-81,67,-88,9,-6,-73,77,6,14,34,83,-19,41,-5,47,-31,-45,92,-92,36,-67,37,76,-87,74,27,-4,8,-76,-40,66,42,96,1,75,-82,-6,38,48,80,54,-30,15,62,15,-88,-12,-55,-83,-54,-4,-45,64,-93,12,-85,38,-111,-89,-83,88,51,-13,-29,44,33,-4,71,-11,-74,65,17,-27,-26,21,25,-23,74,-21,-90,11,-22,55,75,-14,-74,-15,18,48,90,-13,30,79,67,91,-26,6,-88,-36,-24,-93,-0,-46,33,-3,-5,17,42,-82,-97,-25,93,-18,45,40,-17,69,-49,38,91,-40,6,26,-47,76,-36,-81,80,-89,-6,24,-80,-6,-7,44,-74,87,-19,95,29,92,-14,103,83,-44,-82,64,4,56,-57,95,55,47,81,48,-61,60,54,37,-71,-55,-58,-18,87,-4,-71,87,32,13,5,10,-13,-124,-16,-28,-88,-60,-123,172,-65,-97,-6,113,-28,-41,-93,-7,-103,68,1,87,-36,31,71,-67,82,14,17,-5,-80,117,-98,69,-18,-101,-51,28,-84,-77,28,-93,47,49,-93,31,12,-40,17,57,-32,-77,-22,59,54,16,41,1,84,68,26,-13,67,3,93,-62,87,-77,67,-29,56,-65,66,-67,-19,55,34,-66,-55,49,31,87,-86,39,22,-62,-44,-7,-7,44,113,-2,73,58,79,71,13,-11,51,21,-69,16,30,79,78,11,35,14,-88,79,-63,-13,-70,0,34,-33,-21,-50,52,-34,-87,-11,-59},\
+{19,-48,-70,89,-5,-31,2,-32,56,-66,-22,-60,-67,-63,72,-62,-16,70,27,-51,-24,64,-47,-59,-21,-88,-29,-27,24,-39,-24,-2,16,14,-65,-112,-34,82,67,-176,-43,103,69,11,-50,-90,-88,116,13,54,-29,-147,55,81,43,49,-3,-47,-93,2,-93,-21,-73,-44,-151,57,-60,-6,41,-28,-57,80,39,-5,60,-79,-19,68,-68,-93,13,-36,-63,-76,-35,1,78,40,83,66,-33,1,-5,-5,67,71,87,-98,-16,4,-81,58,10,-9,11,88,79,-36,35,10,-112,59,-48,-48,-17,44,-64,-8,-11,68,-49,130,33,-86,67,73,4,50,3,-75,-131,-64,-56,-3,60,-33,4,89,47,44,-111,-37,22,-66,31,-170,-29,43,-63,-20,16,50,37,111,73,-143,-2,-87,-89,-45,57,46,89,-52,-0,77,52,-43,-93,23,2,38,40,78,-83,-98,3,38,-30,36,-75,8,-46,-58,-106,-32,109,-90,-64,-93,-3,-17,27,3,-60,46,-35,-58,44,-69,-13,-73,55,-46,-2,-110,-59,10,-72,28,49,-66,-39,-20,-49,85,-22,-30,-159,-14,-23,-65,-53,31,-70,74,4,-93,115,117,-59,47,-10,98,47,72,-54,-25,91,55,30,-44,52,-29,-16,-24,-61,-45,-42,-40,-128,55,32,-17,-20,78,-52,-66,-73,53,-39,31,56,-94,71,84,-127,63,4,-79,-41,-73,47,-10,-106,-104,18,-91,-14,-51,30,103,28,-70,55,92,66,-37,53,-47,-64,32,2,35,-64,25,69,-25,-72,-26,61,-30,56,-44,-63,28,3,27,-62,-55,67,-34,39,13,49,14,-75,36,-56,-64,26,-90,-87,52,-72,13,-23,-39,-49,-95,18,80,18,-70,-39,-97,132,96,35,-40,-41,-26,-75,22,87,-45,75,-75,-63,19,9,-43,-53,-118,-52,36,-39,38,3,46,28,6,47,12,-35,-11,-74,-65,-73,-60,73,51,-15,-29,-32,21,-51,11,-26,-56,-2,-6,86,102,84,-18,27,-34,-78,98,104,-63,-24,-68,14,-16,-50,36,46,-34,14,-15,-7,23,-37,29,59,-1,43,-15,-111,75,-49,-79,-15,-11,-95,89,45,-26,-102,-13,-78,-16,29,30,-74,46,-58,133,37,9,-2,-76,49,-48,-57,-90,-91,8,-151,23,-96,-2,-19,-75,-33,-87,97,-59,-31,-52,-40,-44,17,60,33,37,152,-45,-49,-78,21,-19,156,99,-52,-137,8,19,-11,84,50,-76,26,43,-60,-14,-69,90,-40,-70,-35,-78,-54,41,21,-98,-89,-7,83,54,35,-37,24,-38,43,-11,-75,-103,89,-13,10,-51,-74,67,-80,60,4,34,49,-39,-10,-66,116,-54,53,-4,0,-87,-48,-74,-1,-84,19,-90,3,-44,-45,43,-50,91,-0,-49,3,-61,-19,52,59,-54,-84,-14,59,-89,-77,-13,-43,-73,-105,-38,8,41,136,-39,35,1,40,-60,-2,45,-114,40,14,-73,-35,54,103,62,-31,47,100,-12,42,-1,57,-41},\
+{-24,8,-109,-1,-80,4,-33,8,-85,143,104,130,37,-32,71,-5,64,1,-34,-84,-24,79,-39,-19,51,37,37,10,59,15,-121,44,92,-87,-60,44,76,-70,-189,124,-105,7,-28,66,-18,175,4,-0,-8,53,-54,-37,15,101,-21,19,-38,28,-11,169,6,-28,-25,-89,153,-34,-33,-85,112,-106,75,-187,47,-63,84,74,-32,-66,18,-65,77,60,67,54,-13,69,-74,-79,-38,-34,56,7,-54,70,49,3,-32,85,-101,-61,-14,-55,33,27,6,56,23,87,2,-16,-13,-79,85,56,-88,-54,63,-4,-61,-49,-49,19,74,109,-4,-51,-117,29,-6,15,-5,30,-113,26,-56,43,46,21,-92,-52,-81,-11,-10,-116,-14,118,69,-45,-31,32,-64,-144,-36,-83,117,124,-124,-25,-51,-36,27,-55,-62,-29,20,48,51,-48,-49,-71,-45,-13,3,87,-77,47,50,-23,-65,49,-87,-67,49,-115,-91,64,-9,-44,-45,54,37,-77,3,49,-21,-65,11,-28,-103,-92,-72,-5,14,42,-5,19,78,5,-52,-28,-25,19,79,88,-69,17,-45,-16,124,-58,84,-14,85,-95,13,111,41,118,69,3,-4,123,-102,-22,17,-29,-58,78,-83,36,-41,22,-40,-63,-42,8,-96,31,-39,-39,41,-39,3,5,73,-15,-11,-70,2,-17,73,82,-79,6,10,108,84,42,12,36,85,26,-59,105,86,-93,35,-37,37,-44,102,66,-124,22,-44,-0,34,95,87,-29,-4,-30,-47,37,-75,44,-59,-28,-92,-25,-22,16,-26,73,20,-32,21,77,39,-68,-65,76,-76,-33,-33,-91,13,-102,39,-61,-74,82,-61,10,74,-48,-19,39,-70,58,13,-84,95,18,-71,-32,-74,-39,-17,99,-21,-48,25,28,80,-136,90,-103,27,-34,49,-100,-109,-6,36,41,-87,-47,-26,-60,-138,32,103,10,-55,78,-94,-74,51,67,-121,-68,97,36,44,5,88,117,64,52,-76,-31,-24,-31,34,10,-45,127,5,17,-19,-223,43,-136,-167,18,36,63,109,27,91,-31,-116,10,97,-6,4,-66,116,45,34,-17,-85,26,-104,-2,-4,64,-12,-109,57,33,-18,10,-26,-96,-37,-29,57,-63,78,48,-64,-47,-96,-69,59,-67,-116,0,104,-40,-18,4,48,-82,42,123,21,73,-98,-7,65,-6,75,-71,83,14,4,147,-4,-2,-80,-139,-27,-25,-142,-104,88,-102,57,82,-84,-30,53,-77,-17,-17,72,58,90,88,63,-20,-48,31,-82,-4,30,-73,66,14,-20,54,26,4,-38,-44,53,11,-38,92,-27,-4,8,61,12,-84,-162,-21,23,-94,48,13,-2,-8,-79,-1,22,40,-110,-25,-54,56,-30,93,-55,-26,0,30,-37,2,-37,27,50,-20,-57,4,-49,113,-128,27,-39,-48,-46,-3,3,-26,86,44,97,-14,-139,57,1,102,-74,94,-80,69,18,40,-60,-1,150,99,-64,63,45,-89,-86,-109,39,-87,-63,-98},\
+{118,-53,-3,71,41,55,-48,-37,-56,51,-67,79,79,39,92,-117,58,43,66,-112,24,-27,-41,18,-5,-37,65,44,-54,94,5,34,-56,27,-112,78,-15,-25,85,-190,1,61,-9,33,-121,-53,93,-43,-25,45,-40,13,-29,95,60,85,-97,-71,33,0,2,37,34,41,-22,-57,-2,34,-52,-29,-49,-21,53,79,-23,-65,-3,67,79,-20,77,3,-21,-99,-8,-49,-54,-55,-42,-50,-66,-18,44,56,-90,-121,-22,86,-68,46,-33,-88,-4,51,55,-9,29,21,90,94,-142,14,-84,-80,13,-31,-34,-59,92,-126,-59,-46,90,-9,-20,49,13,58,-16,42,25,25,-80,-82,-52,-36,91,-111,7,-10,-40,46,139,59,86,-48,-153,181,44,-20,63,68,-28,18,66,-36,36,-79,-34,-99,68,-70,18,59,27,22,55,75,-2,-103,-29,37,3,-22,83,-43,-61,0,30,45,-98,-18,-108,-25,68,6,1,27,-37,47,37,82,65,41,22,61,-19,-11,-81,17,-38,74,62,93,-76,30,60,13,21,24,-123,54,-37,-71,61,-94,35,-4,-296,165,-19,91,-3,-87,22,-63,101,-73,10,-35,-4,-34,30,-63,91,-71,-84,16,104,73,11,2,54,-34,-48,30,56,-101,91,99,107,-9,122,-42,30,26,106,-32,43,-36,-89,-43,-31,70,18,56,-109,-93,13,-110,-26,15,65,43,96,-44,-36,-117,2,-42,-4,100,3,-81,15,-38,28,-61,1,-86,-74,-36,-56,4,67,63,-94,72,64,-14,-68,-44,-36,-77,-49,32,-32,57,-15,1,73,-41,49,-35,-45,77,-4,48,-109,-74,35,14,-74,-82,23,-53,-74,-39,-34,89,16,24,-60,29,-16,-69,11,-61,72,10,-73,13,19,105,-87,59,60,104,96,-20,-48,-96,-110,48,31,57,29,33,-65,50,3,-40,55,-10,-66,125,-135,45,2,20,-1,52,73,-42,-16,64,75,7,-37,-83,6,26,-6,-103,44,-80,-48,-17,101,14,56,-37,-5,13,113,62,-34,-66,19,44,73,-61,-64,-13,-11,-29,-127,-15,67,5,16,-46,44,62,90,-44,17,-69,-47,26,58,-53,50,-29,71,59,88,-12,-37,-41,71,-37,-27,-92,-105,-17,-126,-114,-10,70,-94,-20,-74,68,-24,107,-81,-14,-28,-12,-83,16,-14,74,-1,34,93,82,-79,80,-39,60,107,-10,45,23,-30,-58,128,-52,-15,-46,-7,32,-3,-134,53,-51,-114,-83,74,39,85,-99,73,25,-24,-110,33,-90,-11,16,40,-44,116,24,-90,-16,-2,7,-80,-97,-37,-41,20,19,-4,-33,-91,22,77,-64,88,21,-12,-62,-57,-92,-84,69,71,-74,-70,-66,68,52,67,-62,87,-59,-10,-80,-58,84,9,-50,-84,-50,-84,43,18,-125,24,-53,46,65,-51,-91,41,-152,-43,-14,43,3,89,-113,62,-5,73,-93,51,7,34,25,44,17,63,-86,142,-32,11,73,82,8,-24,84},\
+{35,-22,-31,63,-55,7,44,42,-43,66,55,34,42,-82,-71,-65,45,-83,68,75,81,17,92,-84,106,64,-15,-62,-52,-49,19,-114,-62,-1,-17,39,-50,80,7,-51,-26,-43,109,-6,-50,2,-110,-99,29,34,-91,-90,-161,84,16,104,-32,57,139,149,-53,-82,-81,65,42,-25,-41,-88,-44,102,-42,-71,-61,-87,-77,92,38,-27,-87,-30,18,14,-56,16,56,51,-48,-24,18,-66,52,67,-15,-17,-58,-37,90,-4,-17,-87,47,79,86,51,43,-10,-44,43,45,8,-96,45,35,-62,46,-78,-31,-29,-182,-131,1,49,55,-67,25,-50,5,91,-55,-132,126,8,-87,58,-85,-100,-7,-20,-73,-78,73,-75,148,-96,9,-54,-146,-141,19,-16,8,-16,87,46,80,136,47,48,-122,16,9,-5,13,-102,26,-77,-40,-82,-3,6,6,40,-22,-19,24,0,53,-22,-96,33,7,-20,-41,-106,-25,-0,1,-10,19,-146,81,-72,133,-33,7,7,-52,34,97,61,96,72,73,14,-58,-50,8,2,-88,54,-17,-66,-64,22,9,86,-40,-70,-23,-37,-48,10,-111,18,-65,-131,-72,-56,-18,-40,-68,-82,48,-101,131,27,43,49,6,-9,-40,-108,-32,-55,63,29,-18,-54,-42,-33,-4,-39,-97,-1,26,-87,6,-13,-45,-87,71,-113,-12,-70,124,-45,6,74,-9,-121,134,-13,-17,153,112,-98,89,-26,-80,-38,13,-40,-66,-18,14,29,137,-69,21,-44,-79,82,-56,44,-63,-24,-55,-65,-18,35,-11,65,44,-88,55,-19,81,44,-3,57,-37,-55,6,41,51,17,65,61,46,53,44,-33,-90,58,22,-18,-109,12,10,-88,8,-111,-27,14,0,56,-79,71,22,-45,-48,-112,25,111,-60,27,11,-12,37,6,-64,7,36,91,-92,-117,-125,49,-110,-120,22,52,70,28,-63,80,-31,30,-60,-112,-65,-36,1,110,94,-80,-79,53,42,-22,-11,-10,-63,22,104,-25,-55,44,101,54,38,65,74,-100,78,78,-56,-42,-10,-47,24,-79,-6,-30,49,-52,-106,-98,66,41,50,40,-22,13,54,-16,18,0,-12,90,-16,-58,-4,-28,47,38,75,-39,40,92,101,26,35,32,46,-19,-52,84,54,-51,49,-64,-11,-19,-46,119,-1,-67,55,91,-41,-48,-87,-6,69,-109,139,122,-37,-16,15,-25,21,8,-26,-96,-163,-108,84,-6,-74,23,-81,-71,-60,-39,62,-85,-1,-33,-7,46,-30,-66,-73,79,66,23,-59,68,11,69,25,68,47,47,104,25,19,38,-80,50,-95,60,-7,45,-90,-44,54,-96,59,90,-64,25,13,-46,99,-72,72,71,-21,61,10,3,-43,-18,2,70,-7,-19,47,-2,43,1,-3,20,19,17,49,-14,-76,-43,69,80,43,-93,56,-93,-21,47,25,-9,-40,-29,-8,-25,14,72,-16,103,78,-18,-42,-42,-33,5,-73,91,96,-46,-85,46,-19,-47,36,24},\
+{-18,-101,92,-13,-100,77,68,-73,-45,-111,8,-106,-82,22,-77,-79,63,73,-82,44,73,15,93,-47,31,-39,-10,-8,-15,50,-52,74,-34,57,16,33,31,48,60,-24,15,-88,-73,1,-28,21,-8,-46,109,139,123,63,58,-85,-36,91,58,-45,0,-190,-69,24,-36,56,-37,-101,36,-23,-91,-8,-110,-21,-18,17,-78,-58,-61,96,98,-57,-14,21,-44,-55,76,-92,101,-72,-3,72,89,40,56,-83,25,-84,-71,71,80,-69,-10,10,-10,71,-42,-45,-126,103,-99,4,-30,152,-47,-62,-20,19,2,32,-58,132,-63,69,-27,23,3,41,-127,-18,56,-17,83,62,-58,81,-64,-46,-127,-87,-38,-11,-28,60,-190,-28,-69,-48,-72,90,-54,-108,-51,75,-53,76,-76,22,112,116,74,131,100,129,4,-128,-31,62,-7,80,-37,39,-19,-11,-77,27,-42,74,-23,49,-54,49,15,-19,92,-71,-88,-109,-66,3,25,62,-42,29,-41,65,42,89,43,78,55,37,-96,53,40,47,24,79,29,-6,-47,-65,1,78,1,50,61,3,38,-135,-66,-40,-74,20,-107,-13,-67,21,-25,-47,90,150,-34,88,43,141,20,-36,15,13,-48,12,37,81,34,63,-28,-70,-93,58,-70,-28,-133,23,30,-102,-36,4,66,52,33,8,60,57,92,58,31,53,-5,-17,-42,84,63,-43,-28,-67,-89,20,71,-18,-69,102,-5,-26,69,-53,21,-39,-202,-93,-67,26,-30,-69,-58,-96,47,93,76,-56,71,50,84,73,-94,-75,-29,48,-41,-20,61,17,-7,-8,-21,-79,-85,70,79,-58,24,-65,-85,-72,53,-43,93,-30,22,-77,37,28,-88,34,-57,-96,18,-103,47,-86,84,-76,6,-28,-20,112,62,50,33,15,50,-2,-2,100,80,2,4,71,-8,70,-82,-62,138,49,27,60,55,43,-0,-58,101,-37,47,25,30,-84,79,69,41,15,-12,-61,9,21,63,-70,-65,74,72,-185,34,116,35,-111,26,-108,25,126,-76,-104,43,-12,99,46,-58,-64,41,20,96,-2,-64,11,-74,25,-62,-55,-15,-80,-39,-16,-9,67,-88,-47,61,-35,-50,-50,-44,-13,-48,68,24,87,-18,-58,37,45,16,120,38,-87,-36,-74,43,-19,-42,-54,111,22,-22,-117,-37,22,103,-67,-126,-72,-94,-136,59,-14,-52,47,2,-85,-1,5,45,116,-90,-44,-59,-12,-68,-85,58,-68,27,-30,22,-66,8,-94,-95,-36,-83,-64,52,20,56,-21,50,-4,6,19,121,-14,-120,35,78,74,-15,31,27,79,74,-44,-2,71,23,-10,111,60,-72,22,95,2,-26,-87,86,-19,24,-57,80,-35,29,80,96,0,-36,-76,-63,51,71,-82,20,82,-45,36,88,79,-8,-115,76,91,-34,91,20,-81,5,53,-17,0,80,-50,-4,-38,17,-27,-111,43,63,47,-120,35,69,11,43,46,-138,-20,-64,15,-22,-29,-144,7},\
+{-98,-48,2,-23,100,-4,-48,56,18,102,22,-63,37,18,56,40,-41,68,-130,-34,90,111,-83,-24,-120,-34,42,-49,-23,-6,9,46,3,-68,-12,-42,99,-72,-28,-47,73,73,20,8,15,112,-43,-88,87,-109,56,-51,51,-116,-4,-35,29,-50,-65,55,58,37,-26,-121,-154,23,30,-15,169,-285,61,-33,22,-73,92,18,-48,22,61,11,-53,90,-29,-27,31,49,-71,-76,94,44,46,-70,45,-91,33,-43,14,62,11,4,96,-42,1,51,72,-50,59,7,-29,-35,-13,-62,44,89,-10,-57,-40,9,76,60,59,15,123,31,-51,25,88,10,121,48,26,-153,-96,54,-80,-18,35,-22,116,77,-162,-184,-111,17,18,37,-37,20,-20,-15,28,-34,99,139,-11,97,25,-118,-73,44,-117,-45,-67,-60,56,98,-20,-87,48,-90,19,111,-41,27,89,-83,52,7,52,63,-75,-18,7,-77,62,49,-98,6,66,92,-104,-24,-105,-50,82,-39,-18,-76,-26,21,9,-69,48,-34,-80,-85,-48,36,72,-76,117,65,-42,-70,-53,56,55,96,33,48,75,127,112,15,-14,-32,-46,104,61,-77,74,7,-10,84,-102,-41,-31,155,39,-31,-77,12,-66,74,-28,-55,31,23,-46,-4,-71,30,66,-1,105,-66,-16,58,-86,90,-66,122,102,-46,-38,51,69,-39,116,29,21,30,-132,-21,-83,5,-36,-43,-54,-118,-126,-15,89,-42,-6,-137,31,18,-94,38,39,-65,-84,75,-41,16,-84,-4,111,-24,52,-34,-12,83,-20,-73,-11,-25,-82,88,-104,53,-6,73,-22,16,-50,59,67,8,-89,-58,75,138,-59,-63,59,8,-92,77,3,-78,-11,-62,22,-69,34,-16,144,-39,111,-103,-99,43,86,104,8,-65,-57,-35,-24,137,-2,-28,-22,-45,28,55,-60,-60,-76,65,37,-14,46,47,76,15,13,88,51,-19,-46,59,-16,36,62,-23,161,37,-121,-49,86,82,4,-37,-166,-85,57,108,45,-55,23,-61,-122,122,5,-26,-49,-67,77,-69,-64,64,-1,-19,-61,-34,27,-37,101,159,81,20,-86,-30,-13,67,2,-88,-70,9,-64,93,48,-89,-58,27,-47,-33,7,-55,10,-71,40,85,78,-73,-151,-19,58,-29,-87,59,-52,46,87,160,-102,-19,-55,-63,163,132,54,-56,-169,-130,-13,38,-122,-74,-38,-62,173,200,-75,-113,19,68,47,-11,31,-14,18,76,138,-5,58,20,1,64,14,91,109,-44,-83,-143,-88,-85,20,-19,-65,-24,-53,-78,-57,8,60,-66,85,-112,67,-30,-47,-26,-54,3,-62,-71,-76,3,-62,76,-25,45,37,2,75,-39,-82,-39,-41,19,-11,92,3,51,18,68,49,-41,81,-15,-44,-47,56,-75,-53,18,50,3,-64,-43,100,-82,67,7,5,121,63,50,5,116,106,-6,130,-8,124,-57,-12,-29,78,11,113,-35,-125,-174,-25,-108,154,-144,-8,-100,-121,109},\
+{81,27,-77,86,-15,83,-73,-92,-63,-55,40,-40,78,-63,61,-62,-74,-69,-23,-66,39,-66,-13,39,-30,86,20,-76,48,-34,-102,-14,-109,6,-63,74,-8,-9,113,-133,114,-58,90,-27,-93,32,72,-118,-73,29,-13,-16,36,-92,-119,-36,41,-55,85,-81,-49,-4,73,98,9,-22,-148,5,9,180,-90,19,59,66,75,21,14,87,73,33,36,75,-34,-86,45,102,-5,-61,-33,-63,-64,24,62,34,-28,49,98,-27,52,100,41,4,-41,28,-60,-8,-53,45,74,15,168,-105,102,10,-52,77,75,52,-13,-64,-66,-43,92,-89,4,107,-16,60,-38,-9,-11,6,27,32,55,34,10,34,-93,0,-70,81,-18,-48,-6,-69,-111,164,-59,34,66,79,60,29,-64,-28,-92,-28,61,-17,-10,-18,-44,32,-19,-60,-116,94,52,49,-82,-144,-124,-48,83,95,-41,-58,-32,13,-67,37,-45,-35,39,-0,-19,-90,-17,-2,-66,8,-57,41,97,19,-12,-54,83,-100,-23,11,-6,19,62,84,-22,-83,35,66,166,-54,17,-28,-5,2,-44,-48,-49,144,0,-53,-101,0,80,28,61,-79,-80,27,-32,1,49,-103,-135,-55,13,-45,-113,47,-25,-18,-80,44,-82,13,139,130,-1,-102,-97,-3,-106,55,-96,75,4,-78,-121,-131,22,7,-9,-27,18,62,38,72,12,-20,31,-52,-19,61,-1,31,-77,-49,7,25,-16,-5,121,-75,117,78,-13,22,12,-18,83,60,51,72,62,-103,-18,-49,52,-45,39,-58,-51,-104,-2,-18,-46,0,12,-5,-9,63,-9,-22,8,-30,58,16,-81,56,-91,45,-4,89,-46,-112,15,25,4,45,-61,17,65,83,0,-73,-16,-78,-84,81,-161,22,-31,-77,114,-103,-70,-138,42,-3,55,4,-108,-119,-100,60,8,48,15,-51,54,57,-97,-65,149,-70,81,107,54,-39,96,77,-27,36,29,57,45,-86,-3,-56,-36,82,85,-74,-24,-74,-79,78,-1,83,-63,-116,69,63,-10,-13,91,-67,80,11,54,14,-71,54,4,-11,61,56,76,44,37,-24,117,29,-51,-38,78,94,-20,-8,87,46,2,-62,-52,41,-16,-90,-44,45,-135,-36,13,30,33,-32,115,-72,-0,-45,-18,37,93,-61,-70,-10,23,38,-67,27,51,26,75,43,-17,15,77,50,-53,-4,-60,103,-166,-42,-61,-8,-30,-22,-68,58,-102,-55,-43,-42,-47,24,91,91,32,-56,-98,-56,-4,117,-55,3,-110,33,28,119,-60,-33,-44,62,83,24,22,27,-17,24,64,113,-53,49,-78,-42,0,84,-51,27,-88,-87,-31,45,-16,26,100,-26,-24,-14,-35,-36,46,-68,4,-90,-36,130,9,-75,14,76,-24,-3,-50,72,-34,-5,12,-50,-46,2,2,-76,53,-42,-45,26,63,55,73,44,39,-24,-7,56,14,8,56,-44,-57,-33,-36,-126,67,-90,46,-17,18,-3,-21,-8,81,100,-48,49},\
+{-53,-47,-62,-79,-73,-49,-47,-68,70,-26,73,82,26,-22,4,-87,79,-37,12,-72,-10,-62,76,-45,-83,-3,-15,76,25,-60,-92,-32,42,86,-43,-90,-100,42,-43,-92,38,-105,58,33,40,-104,71,28,-44,42,-38,-8,-67,2,-36,-96,-1,-72,-7,76,-48,-86,50,66,-93,-69,-35,-48,-0,39,53,-1,12,10,70,13,-48,-59,-33,24,-70,-15,-72,-63,64,23,-12,-11,-9,-45,-48,60,70,-60,-21,-13,4,44,-27,5,37,41,-56,47,-59,53,-93,1,-31,34,42,-90,35,-61,80,73,-72,59,-91,-79,-23,-36,-24,1,-27,-85,-60,87,89,78,60,-60,31,-14,-3,68,-76,14,-78,65,-19,-12,5,87,6,73,-90,-5,-26,-62,14,40,-57,-91,68,35,41,16,18,27,-83,-74,71,49,65,-62,-68,72,-1,-20,68,5,-96,-13,-109,-0,1,40,79,80,84,5,-72,-28,67,62,18,10,28,-28,31,-86,17,64,-6,-71,-18,-22,-13,57,68,79,-10,-28,76,36,-18,28,2,73,-91,53,-40,11,2,-46,-53,0,-41,92,37,-14,69,-86,73,-67,-93,-30,61,-99,-74,11,6,3,-61,-21,-12,-45,10,-10,27,-28,-74,-43,-67,-63,-110,-14,-99,59,35,-93,-33,30,-57,-82,-32,-47,81,-22,48,-51,13,11,-33,-68,-38,-38,-36,-72,-22,60,-30,-80,45,5,46,-99,-89,63,-33,-17,-21,67,-57,-100,67,21,-81,-33,72,-37,77,79,93,-48,22,18,-15,74,13,70,29,-92,-9,51,66,-25,-74,5,-75,43,-69,2,-27,-61,-39,-75,55,30,75,61,-87,44,21,18,-106,-16,-14,64,-78,47,30,-76,-105,13,-24,28,-52,-17,65,-111,76,-90,-94,-102,-28,59,-97,17,-13,63,57,-52,-9,68,27,-81,68,71,-64,17,-34,-91,-76,39,23,19,89,-11,-62,39,-47,66,86,69,-2,-5,70,-47,-32,46,-89,-56,55,62,-97,65,-49,-104,-15,38,29,64,26,53,-65,21,-53,-32,42,30,-38,94,-80,75,-84,23,-93,50,-55,84,-56,81,-44,60,21,-73,56,13,52,8,-20,91,-87,75,-95,-22,88,-66,-59,-41,22,-85,-16,-35,1,-44,8,39,-23,21,45,-26,14,22,-88,-56,27,-93,-24,12,94,-27,-31,-49,-97,31,-3,-71,38,2,-97,20,53,48,8,63,-2,33,36,-28,-22,15,41,-96,57,16,32,-86,-85,84,-77,73,66,7,-63,-8,32,56,-52,72,36,33,9,-51,-76,74,6,2,-53,55,28,-41,-7,4,-58,59,-41,40,48,77,-38,-25,89,86,13,-16,-31,57,-67,-78,16,-12,49,80,-49,1,-41,41,15,27,79,17,65,-11,-13,19,-4,23,-96,24,-70,-69,56,-23,37,-36,55,95,-8,-63,-67,69,36,-58,-73,75,-45,-46,67,32,-75,69,16,57,-20,-26,-88,73,44,27,-19,-6,-69,83},\
+{83,-50,71,-84,-32,-73,54,18,-97,-9,-85,-54,-30,-60,87,31,3,-94,32,-21,72,-42,-21,-11,-99,-3,101,-23,-92,52,39,18,-4,-7,-76,-19,112,-164,-31,59,-0,32,-44,48,-45,7,-11,20,100,-134,97,21,54,30,-72,-94,-52,27,20,61,-2,-73,-42,26,-62,26,-42,63,24,-21,30,190,50,71,81,-32,0,16,-100,17,88,-59,62,24,-51,81,-30,61,-41,82,-12,-87,40,-54,-31,-87,-55,84,-102,4,46,-8,-29,84,38,27,-94,-40,-0,-82,-30,-69,-50,-95,-34,-21,137,-47,-103,-11,-31,78,126,24,-10,88,-30,-32,4,58,-8,-104,105,15,-52,-31,40,-35,18,12,-25,-171,68,57,93,28,132,-212,-78,52,110,27,2,-20,-73,-114,85,-27,-18,-80,45,-39,-35,-32,75,-53,60,-45,61,-85,-8,-109,-3,-65,-88,-16,-3,20,18,54,94,-57,-8,-64,-73,-63,-57,93,26,86,20,-87,-48,-47,38,-65,70,-43,60,1,-40,-3,-37,80,-18,-14,-8,-77,83,-95,-53,-175,-25,-21,50,-71,-90,165,124,-87,-126,29,-40,14,-15,-140,58,-102,89,44,15,71,-30,-20,-59,96,73,-85,99,-92,124,13,75,-112,68,-56,-44,-22,-98,-39,22,-11,-112,33,8,-107,89,-43,73,-25,152,58,-65,81,84,-26,154,67,9,-84,64,96,65,-108,18,-74,-27,4,-89,-132,-20,-78,7,-68,-29,-29,31,54,-14,-66,-80,24,67,-45,-51,84,-71,-31,1,-74,-56,55,-37,23,64,-23,74,2,-10,43,68,-19,-28,48,77,97,-88,-20,-82,-24,24,8,20,-68,-23,-29,36,63,56,-97,56,-17,9,-52,-66,-30,17,-61,22,-58,63,19,40,67,24,64,-105,76,-50,-49,75,22,46,-53,15,14,-26,39,-76,40,-37,-20,98,160,34,6,66,-82,2,130,-45,-86,-56,33,98,-7,21,-11,-77,54,3,64,4,-42,-75,-28,-90,-0,-40,-64,114,78,-81,-34,75,-58,90,43,-93,58,-39,135,116,6,-1,-33,117,-13,62,-23,41,64,8,58,-25,10,59,-10,-41,-40,-135,60,-95,-34,-99,52,-130,-56,43,-94,-149,39,-5,-52,112,78,100,17,-15,92,43,34,23,41,54,55,28,-52,49,8,-37,88,-36,83,-65,-71,-201,-41,-40,-129,-119,-139,-196,-21,-130,-92,-9,-15,-74,-87,-39,-49,-96,-77,19,87,52,-57,-84,-25,13,-24,55,50,78,-62,-12,-99,2,-2,67,-89,-41,-9,7,38,-22,-5,103,53,-73,-6,-28,2,-76,19,11,-9,15,129,-74,89,66,-69,42,-37,-41,-45,38,48,-81,-27,-6,16,-47,21,58,17,71,60,39,-12,64,76,8,-40,-96,27,48,-38,-20,43,-34,46,-21,-5,19,2,-28,75,-34,84,-83,77,61,69,-17,78,-36,69,7,86,42,13,-97,18,26,-67,-45,-122,-50,49,-59,-102,65,-5},\
+{-62,36,-105,29,-1,23,-9,-101,66,-27,-66,-50,-18,90,-32,-99,53,-19,47,69,-46,23,41,37,-89,-51,92,60,68,50,-86,-33,74,28,-86,-31,-67,68,-7,-0,-4,73,49,62,-1,-113,-7,-44,-70,-23,-8,70,82,73,-76,55,-61,-39,66,90,-22,49,-56,62,-106,6,-20,-73,-63,17,37,40,-16,-54,-73,-26,-64,-32,29,-22,25,88,-80,-65,-39,-42,-92,38,-38,80,-71,-1,-29,36,85,-53,-16,-41,-11,-2,9,80,19,-7,62,-54,-90,-47,-29,-3,44,-83,72,-64,-5,82,-44,54,-59,81,-98,-68,-144,-81,84,-0,-8,-122,-7,28,-24,34,100,-53,86,80,-63,-22,67,68,-51,3,32,-12,-106,-86,14,86,37,-53,-24,40,49,-16,-26,-157,12,58,-40,71,25,72,-8,72,-2,3,-53,101,34,5,39,-47,2,-15,-87,-78,45,-81,-86,30,-31,-34,-92,-67,7,60,35,26,-25,-33,-83,19,75,70,-101,98,97,115,33,57,0,6,94,41,69,73,-69,10,81,22,56,77,-61,-8,-81,52,-82,29,-123,-10,47,-33,-30,24,16,18,-65,-120,-4,7,-114,-25,-8,68,6,62,-86,-5,89,110,-52,-37,29,57,-97,-50,-58,-73,-84,-32,-57,-5,66,-17,79,-27,86,40,-52,-64,-94,6,4,-74,-30,4,20,-51,31,-3,-102,-13,58,-28,-29,-45,52,32,10,79,-24,-15,-46,63,-92,59,-14,37,-72,-68,41,-63,-75,41,60,83,8,-83,-1,-76,-77,-23,-27,-2,-6,23,-81,-45,43,68,-81,57,-28,63,-38,-57,-48,83,39,-45,-74,-23,-29,48,-3,-82,-52,-19,-79,57,-89,-80,-69,5,-107,-90,-30,-98,-78,73,23,21,89,-68,58,-35,-51,81,10,53,-94,-69,-27,-103,22,17,-30,-80,37,-86,-63,21,-38,56,-33,-74,33,-12,-90,2,11,-38,-16,15,-4,8,5,23,42,-8,-77,82,104,70,-22,-72,-9,66,-63,-52,-81,-33,57,84,7,69,56,22,-9,4,49,-45,6,4,80,37,79,7,-82,60,2,-29,43,4,74,55,-66,19,-13,53,70,-17,-76,66,-21,34,-49,-4,-43,65,-60,22,33,24,-73,34,-14,50,35,-43,-47,25,-67,10,-95,41,-5,-1,79,-110,-113,19,38,-50,40,-9,-91,19,44,-92,-52,1,10,-5,105,-68,69,35,84,-86,-91,23,-76,-33,21,20,-120,58,94,-26,-73,-59,-33,-23,-55,46,80,-55,15,-89,59,18,-66,55,-91,81,19,77,91,-48,-59,-38,-66,64,36,-6,-84,95,-74,44,-62,-44,-10,22,10,20,-64,-99,-94,33,-16,-85,47,34,-82,38,-23,9,-20,-5,-20,14,44,-39,83,-18,-21,11,40,-7,-1,32,-38,58,39,-37,-14,-78,27,-53,42,-43,-80,60,14,-14,-47,-101,-60,-34,-23,13,114,111,87,48,-62,-72,21,81,-63,-13,53,-60,64,-103},\
+{-35,97,59,87,10,-80,60,1,78,-41,-28,-50,-7,78,-93,56,46,49,130,21,-162,-48,39,-39,29,-13,-109,37,64,-30,-58,-70,-65,-24,-34,73,18,-55,55,-10,21,104,23,78,-84,-58,-14,-19,129,107,34,35,-81,57,90,-26,-37,-23,0,76,-146,-118,-66,25,46,-18,-150,-82,-95,-137,86,35,9,36,-19,-6,-80,-40,-86,23,-93,26,23,-49,-60,79,6,72,-70,3,-101,6,-32,-68,92,-42,-30,-45,60,-69,-13,-19,36,42,-35,-11,4,101,85,-32,137,-76,-113,-60,82,-68,-176,-21,21,80,72,14,-86,-63,24,-33,56,-78,48,-60,-3,-3,-73,74,-65,70,13,44,18,48,-64,58,98,-22,-5,81,97,-3,-62,-40,52,13,3,-90,-94,23,-29,-19,-34,-5,134,93,-8,-76,-35,50,17,-64,-21,-40,-111,-18,-49,28,-60,27,-121,-2,77,-69,63,39,35,13,99,17,-86,-38,-15,96,77,31,20,22,23,80,-29,68,22,-31,40,-34,36,82,52,-24,37,11,20,-23,-108,79,-54,-59,32,100,103,158,74,68,-43,31,-53,-6,-21,84,68,51,44,-4,-38,-52,109,33,10,-151,-122,43,103,72,13,-67,13,62,62,33,-129,11,-147,-68,106,46,-39,-122,131,-82,65,-89,6,-27,-63,154,72,-71,6,16,-17,36,-66,65,9,75,-89,78,21,51,19,40,-12,66,-47,-60,-80,31,11,-33,-32,-17,84,35,-99,-35,-50,-42,60,17,-25,-51,53,-48,29,39,26,-82,8,-80,-19,-67,57,-66,68,-61,-33,-49,-61,-4,10,-26,-79,2,-4,37,-91,34,-29,56,55,122,81,113,114,22,-52,99,144,-54,37,17,-124,-113,24,60,32,-1,-126,-24,8,77,89,-23,-51,-91,-10,-17,-107,-48,-49,-95,147,-94,22,-51,-121,49,-47,-85,-62,15,104,-48,88,-6,-91,-123,-67,-61,148,-52,45,29,-14,-23,74,-8,102,-85,-137,83,-67,-7,119,-37,71,-5,-145,34,-26,-83,-45,-29,78,29,-52,94,30,6,-42,-31,31,47,-9,-73,44,59,-38,15,34,-73,-12,79,-95,6,61,8,35,-53,15,10,50,18,-77,76,66,-53,-16,12,-88,28,-124,29,146,109,10,37,122,-47,54,-119,-9,-14,72,-125,-53,91,6,-10,75,33,-100,-34,-62,173,-76,72,-56,98,-32,-23,-100,3,-72,93,102,18,-118,-2,-25,182,113,-15,-69,-59,39,-11,37,-27,95,101,-44,-21,2,1,-65,-30,-101,-19,-16,21,129,35,-35,78,92,35,24,-103,116,59,-29,-19,-35,-2,69,-67,-93,-55,-73,19,-35,76,-107,-58,-3,72,-62,-32,17,-1,76,3,39,56,-34,105,-20,42,-42,-7,-43,18,-102,133,64,80,71,77,-103,52,1,126,5,-94,-149,62,-6,52,-1,-35,-51,-6,-84,27,36,19,21,40,-0,46,-5,13,-56,-3,-61,-53,-35,8},\
+{-86,41,-32,-26,74,-24,-73,97,162,40,-59,99,62,-64,-44,-130,22,-6,-44,82,-25,-10,-108,57,26,-35,67,78,56,74,-35,26,118,-60,65,30,59,-158,95,74,174,17,98,27,-144,88,-108,-121,33,40,62,15,-42,-12,-38,-8,2,13,-33,-28,-79,-44,48,-101,-139,-130,55,46,26,27,-2,45,82,-93,-43,-96,22,43,-49,68,71,-67,29,14,-84,67,-47,56,60,-45,11,34,-40,23,71,-11,-30,70,9,32,-107,127,-23,27,87,-2,-77,-2,30,-29,126,-76,58,-79,-43,-42,-106,-126,-46,15,160,58,-65,19,10,-64,7,74,96,-96,100,-76,-90,-55,-108,4,-24,27,19,-51,-62,56,-72,-58,-34,144,-18,14,-204,-30,48,91,52,-69,-60,-2,73,-12,-10,24,138,-73,75,-63,-77,69,156,-68,-47,11,-28,-6,-26,59,109,-20,5,26,5,67,-36,88,-22,41,-8,88,54,59,56,18,11,67,-53,3,-96,-32,-17,43,11,40,-27,-38,25,-29,40,-42,-51,-10,64,29,42,-43,-34,-27,84,-1,-198,104,-98,22,11,55,23,82,71,43,-90,-81,86,-45,-8,-93,-15,-63,98,-51,16,-58,158,18,57,14,-16,7,-52,-69,35,30,-135,-130,14,-46,-85,21,88,54,-13,21,6,0,-67,-50,-11,-66,88,11,-23,64,51,-79,69,22,-34,-93,29,-28,93,-62,-108,48,69,-114,23,75,-114,68,-107,-0,-18,-92,61,-37,64,-0,6,-95,73,49,54,46,18,-53,87,-92,-61,-83,-40,45,79,36,63,40,-93,-66,-91,11,12,38,-48,6,75,25,9,-10,-99,-44,-100,-131,-10,50,10,-90,184,157,36,-42,59,4,-84,49,-3,-89,70,-5,-46,95,20,-6,-62,-22,3,-45,51,66,3,-15,33,26,-84,-13,-94,-74,-4,52,-23,-102,-29,91,-4,-20,55,36,-54,65,-59,32,59,55,126,65,-11,-69,28,-30,-68,61,-61,-122,-92,27,86,-47,1,11,20,1,37,80,157,61,-72,-61,48,212,-14,-125,-20,64,-37,-45,1,-71,-83,-91,-17,31,15,-77,61,73,-80,-86,2,-53,-10,111,-7,-70,-81,-60,-6,25,-32,64,-62,-36,30,81,26,3,134,123,-65,30,-39,-63,25,68,-111,47,50,-13,-53,75,-72,-18,46,-80,-43,-10,-20,-123,43,23,-70,-81,-57,-64,-101,131,-54,-21,-71,66,-19,-72,45,-50,-22,-42,-61,-15,-22,-25,-17,-3,123,3,51,2,-11,28,42,-76,10,-21,-12,-37,63,-44,-146,6,9,-78,28,-69,38,3,-107,22,39,-45,-15,9,-43,-85,34,-10,17,52,61,-28,65,-32,-74,43,-45,77,42,38,25,-81,38,-3,14,-34,35,-63,38,-31,-77,-19,-119,102,32,0,-81,97,53,-3,95,25,-37,-126,52,47,-108,76,151,28,-22,-7,-57,-24,70,-83,-70,64,-98,26,59,-32,-27,73,-84,-113},\
+{84,85,68,-85,78,-97,3,84,113,-3,1,-40,13,-45,-83,-88,21,-79,-47,-8,-62,14,-37,62,16,-71,62,50,33,66,-2,-91,51,83,-69,-82,16,6,-9,-71,94,-123,24,-69,9,-18,-16,15,76,62,-104,25,-49,-83,84,-32,17,21,-94,-37,91,-2,52,76,-15,50,-47,-21,124,234,21,-6,61,67,-58,77,89,-29,-53,16,-79,21,80,-61,67,51,39,-56,69,14,-22,10,-2,53,-7,1,-92,-19,-32,103,54,-69,-74,-2,100,90,74,4,12,11,76,81,-94,92,-84,94,-143,-97,39,-3,46,37,-83,-20,14,-63,86,-71,-22,57,-94,70,-5,-48,47,60,-78,-18,25,14,148,84,11,63,-28,127,-100,-71,-72,-105,117,84,49,81,-38,9,-29,-14,29,42,-21,-57,-47,50,-54,-110,69,55,-12,61,-83,15,3,15,37,-36,31,-23,1,16,-13,96,-18,-10,-82,-29,21,-8,73,26,-10,81,32,-45,3,20,-65,-90,-9,47,26,29,-62,51,-28,-37,9,41,-78,-35,47,-20,44,115,-10,10,-55,44,-48,23,-18,45,157,129,36,73,-72,-103,77,122,-30,-77,-79,-58,-21,53,90,-82,17,-89,-40,-14,65,98,-47,-13,-88,66,-19,73,0,-52,-66,57,118,-17,-99,-49,-9,38,32,-90,-33,-32,-4,-41,10,-47,33,-85,56,21,-75,-46,-83,28,-114,-83,68,60,-9,92,-71,49,161,34,-27,-17,13,-25,-71,68,73,-20,-59,-69,17,55,-88,12,91,-88,44,44,43,-26,-60,-38,-90,-81,63,81,15,-71,-82,59,-24,62,15,-52,0,9,63,15,51,16,103,23,72,73,83,-18,16,91,-63,40,14,-12,20,89,-2,-66,44,77,-91,-62,-36,82,23,-97,45,14,58,-10,45,-107,96,-106,-84,116,-79,-56,-146,-36,-154,-87,23,6,-115,-60,-89,-54,-87,52,31,70,67,-67,40,-26,3,-43,62,-79,-9,-2,35,78,19,-97,-70,-90,101,-28,93,-16,18,83,161,65,34,94,6,6,-89,-16,-21,-50,17,65,-67,-102,-21,-97,-111,72,68,99,19,-88,64,14,-81,32,-75,-105,-107,-34,79,-89,-3,24,54,-107,90,-4,-124,-15,-41,64,7,31,9,-35,-53,71,97,77,-37,-147,-30,-102,-49,-72,-37,-8,-28,-95,-135,-128,-137,15,-19,-183,-22,-158,-7,124,-8,14,5,39,-36,-25,45,26,33,72,9,2,20,50,-83,103,-29,-83,-7,-38,77,-20,-42,-54,-40,33,64,49,-36,-54,9,61,-37,10,-59,-97,76,-30,-28,99,-74,-85,-22,85,-4,24,-39,26,84,89,-94,15,-36,17,4,90,-26,68,72,2,65,-61,15,25,95,18,-69,46,-25,50,-67,-35,-88,-117,-2,-39,34,-86,-48,-16,-89,-56,-52,91,-46,50,98,148,50,62,93,16,-24,125,46,18,-9,-26,-97,4,83,-49,-41,-115,10,86,-41,-7},\
+{-29,137,-84,109,15,24,-60,-10,-54,-52,-69,21,70,116,-62,70,29,13,-15,5,-76,65,49,69,-50,17,-68,20,-31,27,-33,-12,-54,-70,-89,58,-4,94,-17,-33,-86,-88,-48,106,5,-130,-10,17,-44,41,96,16,-106,29,2,-10,-81,52,-0,-117,31,-5,23,-97,-51,-124,45,31,58,66,96,-159,-13,-80,20,-66,11,58,-2,-63,-80,26,-85,-54,50,-77,23,-51,-4,-158,-94,29,-55,3,146,-67,-37,78,-38,-45,-36,-77,54,50,58,39,93,-32,143,-22,-69,-3,19,17,54,-100,19,-48,-1,-16,-74,-5,-109,-49,-129,76,-41,66,3,-50,-46,-72,-61,-13,34,26,-118,-22,42,94,-9,89,-20,62,-19,62,13,77,32,29,28,-30,21,74,-153,-24,63,47,-129,21,-127,-17,34,-29,-96,109,-98,20,1,79,-7,94,-90,-2,28,-99,8,84,40,19,-69,109,-92,-79,56,-13,58,-22,-27,-61,73,6,-53,-29,-21,-57,34,69,39,-73,0,-80,49,-60,-101,75,81,34,2,82,-60,116,9,-55,-4,-60,143,102,136,7,37,-115,-26,-124,-111,139,-70,21,4,75,-27,58,-125,-94,10,43,-119,63,-79,-38,-20,6,-62,87,18,-105,-91,34,-56,-43,-147,63,75,-96,-11,12,2,26,118,119,-3,30,-37,65,-133,78,-48,-117,-81,18,-1,8,-109,32,-90,-44,13,66,-126,-75,-7,55,-90,-36,23,26,-58,-63,-73,-40,-80,-68,-74,71,-7,34,46,75,82,-57,94,18,-25,9,76,62,60,10,-15,-29,-46,49,-94,78,-93,92,72,78,42,-19,3,81,21,-68,-38,129,66,42,17,138,55,-2,89,-25,-41,60,-112,-4,89,-28,-77,-54,35,-22,-45,-13,-108,-12,-54,62,-37,12,-35,-79,39,100,-19,-25,34,-127,-143,-102,69,53,-87,-120,10,81,-46,-17,36,-14,158,39,-57,78,-35,14,-1,-13,-53,-21,161,-62,19,18,33,67,-31,-62,60,-146,-38,11,-120,-108,-50,3,33,-120,-17,-99,19,50,-20,-49,-50,12,-13,-32,-26,49,60,4,-47,-42,78,-76,137,-114,-2,-57,-71,-76,-59,-106,-21,-126,-71,-72,-1,-3,-44,86,13,143,-1,82,30,69,-139,104,52,-112,46,-30,-18,117,-73,93,113,-133,72,22,1,119,24,-64,63,65,-111,-55,-55,-177,-108,-128,-245,-54,105,-2,65,-21,-38,0,82,1,-102,19,105,18,-0,105,-21,12,33,10,-62,-21,-127,47,-45,-75,31,43,-134,-69,-42,-104,-2,23,-24,-5,-96,-29,26,34,-43,41,-105,-11,57,11,30,29,-22,-20,-2,22,74,52,75,-30,-13,44,-58,4,87,46,85,-13,-8,-31,100,9,13,88,90,-4,76,1,-44,-68,32,133,-1,-18,-93,145,-94,55,50,32,-2,-43,30,-88,61,-27,34,77,-43,40,47,13,-63,-44,-41,65,18,-49,-96,-193,35,-112,-165,-62},\
+{-14,42,-2,56,-33,-72,-43,-9,46,-44,-53,66,-50,-17,-11,-9,-12,-28,68,-29,-90,53,24,-73,-2,-90,76,-72,-67,24,62,53,-54,-2,11,24,9,14,-93,83,92,80,-24,-3,69,-90,82,-76,50,61,72,46,76,8,35,18,11,55,-27,27,87,-43,15,-20,-24,43,44,-8,59,44,-28,82,-28,-1,12,42,40,-92,-67,-60,-32,-68,13,25,17,-17,-33,34,38,15,-53,64,-11,31,35,48,-77,-70,-62,-64,-7,14,-40,65,-62,63,-46,-47,80,-26,56,80,-60,77,32,25,-52,55,-64,14,-65,-5,30,17,40,56,64,-65,94,9,64,-51,-103,29,-17,-4,-71,59,39,-94,-35,-72,98,-63,41,-19,59,-52,2,-22,-38,-42,-79,81,-49,-59,68,24,24,-2,-84,42,-68,-31,-61,73,71,20,18,42,55,-62,-92,-14,-32,-100,11,-55,50,-15,74,76,58,72,55,-26,50,17,-71,-56,-20,-46,-66,15,-77,19,35,85,-40,53,-21,-89,50,83,52,70,-15,2,-18,-16,26,-86,46,87,-24,-72,-64,-63,15,44,-98,-45,-17,-58,-38,-16,78,52,51,1,63,-66,-33,-35,28,-30,-81,-57,-46,-50,33,-40,15,-8,-103,21,-77,47,4,36,-50,51,16,-78,-61,83,9,83,-79,45,-75,-34,34,-27,31,-59,8,95,68,-64,-31,-70,18,-33,-34,63,81,8,2,-54,35,-58,-25,-36,64,-82,-91,93,-56,-77,76,33,-63,32,61,12,84,-43,-61,-12,-49,-31,5,81,85,-95,-75,-12,4,47,78,-30,-37,-65,-15,-55,41,17,-75,73,39,-93,87,-52,-57,67,-62,-41,23,78,-27,-73,11,-101,77,67,-69,1,-22,-30,1,-85,-21,8,-17,-81,26,-99,-44,-7,-95,-93,26,-52,-80,-69,12,36,-83,86,46,-59,16,-15,-67,-87,-84,76,-74,69,82,-72,-27,-58,15,-39,-69,-30,26,-55,68,-45,48,22,80,-11,46,-101,0,-88,-44,42,-59,43,1,50,30,23,-51,-24,-31,55,31,-33,1,18,-8,-97,-71,-5,78,-82,16,59,88,31,54,-89,75,-17,81,-11,40,-47,78,-59,20,72,-41,26,72,-51,32,62,-61,-71,80,-85,2,71,-43,-21,-63,-82,22,52,-8,81,-6,-4,71,81,78,5,-72,35,-61,-10,-73,9,-27,-31,0,55,25,60,-101,-87,-31,-75,41,-22,-71,-21,10,3,47,55,-84,51,0,-47,-74,73,48,-83,-22,-65,46,-28,-5,27,-93,80,43,1,-76,89,-82,-48,-62,11,-12,16,-62,-83,-13,39,63,-61,-90,-96,-84,0,93,-42,-18,-32,-17,8,30,-57,34,-37,19,-89,-8,90,23,-13,73,-93,-18,-49,54,44,90,17,-27,24,-68,-80,55,87,-45,83,15,-40,27,33,9,40,67,24,-58,43,28,13,13,21,12,83,-75,-39,-29,-60,-30,-14,24,-56,34,-98,-52,-4,17,84},\
+{106,0,71,14,-45,74,-61,92,74,25,50,-27,4,-19,-42,26,8,-9,90,-33,14,-28,-73,-61,37,-35,-100,-28,134,5,11,-35,-101,-52,141,4,-83,-106,66,90,-21,-11,-5,-211,-211,76,-118,-118,-60,2,-104,48,48,-84,37,110,13,20,89,-67,118,35,21,-30,-37,-161,66,-21,-95,96,-62,-64,71,14,-60,57,-88,-46,-16,61,28,-76,8,-24,-102,-42,70,-39,-34,-11,-26,37,-38,70,-32,-64,-25,13,-21,13,-102,10,34,109,23,22,35,-114,-66,132,111,56,23,51,54,76,75,-22,-167,-10,35,-35,-5,-75,-144,32,-101,67,-82,64,55,-14,17,-158,-62,-29,-91,-55,20,13,-102,30,-84,101,-15,-36,42,92,-4,-29,-56,79,-48,-50,-44,12,41,149,110,-191,-19,-45,68,33,106,-216,38,-115,82,-45,30,-52,-96,1,67,75,-46,-26,60,-67,12,135,98,5,-44,-83,-27,66,46,-101,-55,27,41,-21,-81,-34,-61,46,152,27,97,8,88,-14,-56,35,95,-79,17,54,48,33,-31,7,-37,-33,-36,-71,131,-32,-33,-95,-21,115,174,-167,24,-1,-91,36,-31,-166,-117,-81,131,42,52,-73,37,28,19,52,66,-99,33,25,136,-50,-105,27,54,124,-51,132,56,29,-81,-76,33,44,-30,-93,42,-91,-71,-39,-37,-73,63,62,-30,-80,30,70,53,57,63,29,89,-6,0,-23,1,-84,-22,49,-35,-15,75,-6,3,57,68,57,69,22,84,92,-1,86,54,-81,53,-50,-59,-57,5,-36,-37,48,-87,-85,2,60,56,53,11,-106,88,21,-86,-81,77,-76,2,103,42,-32,65,-120,-36,8,112,108,99,44,-123,-33,-156,18,-4,-28,44,-21,-58,-49,25,44,58,92,-25,-109,33,69,76,61,28,-13,16,-21,32,13,-23,-65,-41,131,5,-60,-112,-108,48,85,33,-137,17,55,36,-28,27,11,-18,-36,69,1,-155,5,96,12,41,-33,-103,52,83,80,-75,58,34,-104,-92,26,-7,21,85,37,25,-82,27,101,-81,-7,-112,-114,-11,91,-26,23,-89,-55,-4,-77,-34,95,-75,13,56,80,0,53,76,47,83,3,6,15,-138,-50,75,-26,42,1,92,87,40,138,-25,-101,-64,-108,-103,6,-103,-19,-125,-114,34,-80,-5,75,-18,38,42,-26,-52,107,-26,-56,222,89,73,-21,-8,-42,43,72,-76,89,-116,79,24,76,-57,19,-72,23,3,-45,-0,-49,18,71,-3,-41,3,28,-27,21,-47,-29,15,-59,123,-5,-104,38,60,-38,-21,-75,-104,17,-12,67,-84,43,33,68,50,-64,3,-5,-19,1,-67,-87,49,33,-82,68,-20,-39,75,-24,78,-87,-106,-52,-57,-83,-65,-100,77,-33,-24,129,46,-8,-100,-14,59,60,-75,91,-73,-75,19,-105,-32,62,-92,66,-7,-11,-40,-52,53,13,98,136,-18,-43,10,-162,49,142,33,-109},\
+{58,43,-20,-74,-70,-61,-1,25,72,62,-55,27,-3,-21,-84,-19,-3,2,31,-62,-68,-71,76,-86,-61,-62,56,-16,78,91,78,86,28,-32,-16,-5,-72,85,-53,-52,16,-11,65,-30,-43,35,-25,-22,4,-48,-21,25,-46,-50,-74,-65,-74,101,-88,-11,32,89,29,-83,92,-2,1,36,-52,-6,-26,-48,0,15,21,-49,-47,-29,8,-5,66,17,31,35,93,-73,-30,-0,10,69,-29,40,-12,79,83,10,31,-85,67,-28,-19,-27,-37,-10,-87,3,36,-77,-68,1,36,38,33,57,-70,-30,-50,-70,62,-49,-78,-1,60,-98,-84,-62,45,68,-46,-90,-16,29,-33,-5,70,-37,-34,-84,-38,49,-14,75,22,10,-65,-66,-1,33,-59,23,13,11,-23,2,-57,82,51,92,-27,88,-62,-8,-79,-21,60,-8,-73,-4,-58,101,128,3,64,56,87,-43,-75,104,94,79,-27,71,86,17,35,33,24,70,-3,-55,-80,20,66,-64,-18,-11,80,84,84,-83,82,84,47,-3,-85,-37,-15,-92,92,-46,55,36,-23,16,-40,56,106,-57,108,98,-26,56,-40,-57,-65,1,62,6,101,59,-46,-86,-20,79,46,-66,-16,14,-106,-2,-69,25,88,81,-104,32,-6,59,-69,63,37,45,-59,108,-53,24,-42,-10,25,-31,-89,-53,19,-43,-87,-69,42,38,54,56,-81,-38,-27,62,-35,48,-37,-28,-56,-35,-1,96,111,-55,-14,58,-80,75,-54,-43,91,27,37,46,-35,-7,-61,-51,-78,-52,-8,62,-61,25,56,-8,-22,92,-43,-16,-63,50,20,14,40,-32,-86,88,10,85,11,-49,-59,-5,-84,-59,-44,-20,117,11,-16,16,61,40,36,76,75,83,19,93,-92,-5,-39,81,-102,58,28,-82,-74,7,-79,-31,14,-79,74,-74,6,-32,34,-12,18,46,78,-29,-42,69,51,-63,39,-39,22,-47,106,-81,24,71,50,-25,33,13,-54,-70,-52,-58,23,34,-31,-84,-84,86,-37,70,-84,-22,-17,51,87,19,33,37,-39,71,89,54,-65,-89,41,-27,-27,46,3,17,-47,39,-50,-76,39,87,-69,40,6,-10,94,37,9,-21,-15,-104,-82,36,25,-34,-77,-42,-24,1,53,93,-57,24,40,-68,31,37,8,-50,65,-67,-42,-79,-26,-39,-65,-18,-10,-67,2,-48,-58,-84,-60,-36,-108,-12,-49,-45,56,29,-51,-26,55,-77,-19,32,-22,-50,72,61,-48,-31,-37,-85,10,-42,52,88,-76,-23,39,-25,-38,-44,71,74,88,-42,69,86,94,-11,-4,-43,-13,31,77,-54,2,44,-97,-33,-83,88,96,88,-48,-44,44,56,-60,63,-58,34,-91,10,-46,-55,36,76,-15,15,-80,-85,46,-57,13,67,-89,-89,57,-14,101,64,-8,19,-79,-67,42,97,-2,82,31,88,91,-42,80,27,39,-66,-70,95,-55,-7,26,-46,-64,-90,67,57,10,108,83,76,-9,-76,-98,69},\
+{50,50,-32,-94,-3,44,43,75,75,-42,-91,-118,11,-76,66,35,-3,-45,-54,-85,22,52,-2,-6,3,31,63,-45,44,-43,67,-87,-114,-55,-21,-15,-225,-43,86,78,-36,-121,-133,-152,19,89,96,66,-75,54,32,182,101,53,46,78,-65,110,97,32,2,49,-101,186,103,-95,4,-108,-207,91,120,15,-62,-68,-59,-2,-17,7,20,76,-12,26,-17,8,-114,63,-72,15,-77,43,77,-80,-84,12,33,-36,96,3,13,-62,-34,25,-103,62,33,-42,-34,-68,-65,49,-52,125,97,-22,25,-112,87,-27,10,63,-31,-93,125,2,-31,-26,46,-59,56,-124,122,70,-36,40,-26,62,69,-63,28,12,119,209,96,-33,84,-19,-78,-108,8,-105,-13,46,-211,-136,-3,-58,143,65,101,17,-12,-9,124,5,29,-6,-88,52,124,-96,-97,-79,-38,47,127,31,11,-91,44,-34,72,97,58,39,-39,-27,103,-11,106,71,44,-55,135,29,57,98,-48,56,19,-51,43,-93,-54,46,47,-66,-89,87,27,57,-37,63,77,-12,114,28,-32,-165,-23,-18,-72,-50,16,46,-114,32,-92,-83,121,-43,81,-107,-6,60,98,-142,25,-3,84,-36,94,23,87,-11,-21,142,87,64,62,106,-25,128,123,-115,-55,56,102,-104,52,37,-58,-83,19,-86,55,104,29,150,51,-2,-20,6,-15,5,31,110,8,-45,65,135,-68,34,-93,-31,113,111,-124,15,-61,-27,-64,76,8,-3,-73,36,-29,58,28,-4,-52,-2,-35,-44,9,-0,-83,38,11,39,98,-103,-43,-13,-66,15,-57,72,0,-67,-30,72,0,48,-33,180,70,-48,-104,-138,-109,-116,112,15,27,-127,27,-69,-91,71,-125,34,76,33,61,8,-57,101,14,-6,51,-13,31,39,151,-82,21,-10,6,40,120,88,-42,69,-0,62,-41,53,27,-43,15,-60,50,67,65,114,91,-66,56,17,100,66,-39,125,-32,7,90,30,-15,-23,-200,-52,-38,72,-77,-75,-36,-88,-48,17,32,92,49,23,-125,-127,38,3,118,-25,-82,-53,-25,130,117,34,-62,-36,31,-7,-15,45,46,-70,-53,49,78,-50,-9,-60,100,7,49,21,84,-75,106,12,-55,67,-73,-129,94,-4,-11,33,54,62,-41,-31,34,118,-12,-83,-58,50,41,-92,-6,-123,2,-68,4,-36,-226,-137,162,110,-19,-34,-42,87,59,-19,76,25,-37,-47,-1,-60,74,8,-31,103,83,16,-20,124,77,114,11,95,3,-11,42,23,-17,-46,-99,-33,132,-69,68,21,106,-0,59,-85,-4,-110,-52,-61,-19,-34,-86,142,-16,-87,-29,-67,26,-31,-58,-96,-63,-11,-19,78,64,-28,78,70,-27,-94,-68,-60,28,-61,-32,-26,32,-83,-46,78,62,158,29,-51,-61,-80,104,-16,13,122,-66,16,62,-71,-150,67,44,47,50,-9,-96,89,19,84,-95,11,-42,-23,113,218,60,-50},\
+{-8,46,-47,115,-45,-21,-37,84,35,-138,-5,59,38,92,108,63,101,47,47,32,15,-47,69,-71,-43,-88,-65,3,-54,-109,-82,-34,8,62,-6,-105,23,14,125,-440,-126,63,-61,27,-58,144,-18,1,-59,-124,-0,90,-59,72,31,133,-134,-106,-34,-36,18,34,53,25,-14,186,79,-113,175,-265,83,97,47,4,-58,12,75,-18,-78,-24,76,69,28,32,-33,33,-57,-5,27,57,55,-38,-98,18,-52,67,76,-3,16,84,69,60,-4,-109,-98,-41,33,-19,46,71,-80,-182,-81,-69,-64,19,85,125,106,13,-17,-22,-95,53,44,42,-64,-101,28,-49,-84,-137,24,-59,-23,53,128,20,211,-13,-42,-190,23,167,75,-60,-363,220,-216,-57,-50,66,-44,142,-122,11,2,-133,-87,151,-143,-7,42,97,-16,148,35,-21,-76,40,71,132,125,2,69,-6,124,197,-127,43,2,112,-210,85,55,9,131,58,89,20,-150,-86,79,-110,-59,38,-40,22,-94,55,81,-38,42,-87,-40,-75,58,-25,-4,79,20,-69,-7,-86,27,-78,33,105,-325,229,-22,-27,26,98,-32,29,-35,29,15,-9,-96,109,133,73,-95,53,74,98,-40,82,-147,-12,63,-1,-65,-120,-138,50,104,112,-88,-108,98,-16,-93,122,50,32,103,102,-39,70,157,47,-61,43,-7,16,93,-42,-187,23,-18,-77,-191,1,-80,-67,-72,-63,22,85,-17,61,-135,-94,120,1,10,-32,-48,-28,-31,-19,27,-25,-40,-27,-82,-59,15,41,-66,40,-97,-100,-106,23,46,20,-109,-8,-33,84,28,-29,-71,-49,-82,57,-11,-15,35,3,81,23,60,-50,169,198,-29,100,-113,-70,-84,135,-30,-74,185,4,10,-6,-8,-77,59,87,-10,11,-26,15,49,105,-105,-107,-124,-188,13,90,-67,26,9,130,-72,16,-59,43,-14,22,63,110,68,17,8,-96,-22,-45,-43,-55,63,20,48,69,-54,85,104,59,40,19,101,17,125,-12,-10,-7,-55,81,3,69,21,-19,-76,-83,9,-11,-37,69,-46,-159,-131,-3,66,86,-27,-109,10,19,112,138,-106,-60,-14,79,107,-57,28,69,-35,-96,25,8,74,36,64,-16,140,105,54,-15,29,-10,-19,-3,-82,20,75,26,120,111,68,-42,58,115,148,40,-57,-53,-39,-75,54,-50,79,21,-19,11,207,56,14,-132,100,101,43,112,165,60,-57,-105,135,39,56,-54,-56,-35,-48,-83,32,-1,77,49,-38,-64,-82,54,56,95,-11,-105,-99,20,21,-18,16,-27,-20,-26,43,-16,40,102,-185,-32,-34,24,-59,-34,78,18,23,81,20,-20,33,-78,48,62,67,-73,-1,-39,38,-65,-96,-57,-39,8,19,-79,-4,-64,-18,147,70,38,41,77,97,99,78,57,63,-26,-50,69,57,-73,27,-11,52,29,-13,-77,11,-131,-75,98,-9,-73,8,19,126,42,78,1,-59,-60,-26,50},\
+{-41,-28,65,-25,5,-56,56,106,-103,74,59,-39,8,-78,-74,63,126,62,73,39,40,-10,-94,-68,19,-98,-4,-59,-45,28,-16,-21,-32,60,75,21,-47,4,-27,6,34,65,56,-3,-66,-44,182,62,126,-103,-36,-113,124,94,85,-165,2,-30,-5,78,141,13,44,-12,129,3,12,15,-40,-105,87,-96,-42,88,-85,3,76,14,23,-66,26,30,28,61,82,-22,49,10,-32,-40,-92,37,-61,16,64,63,49,-6,63,-79,-57,19,-28,43,44,7,5,-41,27,72,104,-81,61,82,-52,-6,-63,53,134,107,4,27,58,42,98,-15,-22,-81,-67,60,105,37,-78,-15,-89,-4,103,27,30,-151,-15,84,60,-135,41,48,130,56,122,142,-0,-1,-7,20,116,59,-94,-62,50,88,-39,54,-35,61,-2,115,29,8,7,-32,-17,-41,-50,6,-129,-67,-89,69,-56,-63,-42,-58,80,15,17,-29,106,-18,-72,-60,-3,-52,-23,-87,-33,59,-75,-69,-90,-41,97,29,-58,65,-18,29,-80,13,-23,73,51,9,-48,17,12,54,17,69,118,14,2,109,57,-25,-48,52,12,-20,-19,-19,10,-16,31,-10,-175,-97,111,137,-1,14,-212,-38,15,21,28,44,-13,-95,-98,71,59,11,53,-35,86,-27,53,118,57,75,116,-85,92,30,10,-65,-19,-26,-60,-5,-68,-113,80,94,-105,-58,-4,93,41,-58,-6,58,-15,52,-16,48,108,-17,3,-87,-50,-55,-7,8,-39,-8,-22,23,-75,-66,-71,-35,-13,14,85,-88,-76,42,23,83,36,62,-13,47,30,-21,-56,3,-58,12,-77,-29,94,20,-3,-115,69,54,87,-27,-39,-82,33,-65,67,109,-85,16,-105,-48,144,48,-12,-110,-74,-79,-53,-42,49,-79,-40,-32,42,-14,79,-75,23,-26,70,-81,2,50,63,-72,-123,99,22,103,15,-43,-126,-53,82,76,85,-1,52,32,78,-10,20,33,-56,-37,2,-81,-42,4,15,131,14,4,81,107,5,-77,-130,-63,-101,63,-75,-44,29,-72,-88,-87,11,-31,36,-55,59,18,-2,-23,-62,-71,-50,-32,15,115,111,-45,-35,10,-47,176,-80,-100,-11,-88,31,52,17,-20,78,-16,44,81,-54,-89,-24,-44,-9,-12,-43,56,-141,-59,-65,63,-1,-35,-6,-72,2,-68,35,-118,78,-14,-50,87,-9,-114,-80,-59,-158,48,-45,-112,119,-32,86,106,58,-27,127,-33,87,66,70,-74,76,-60,-12,11,27,-100,-15,61,11,99,-49,77,-47,62,30,32,88,101,-29,-40,85,-4,73,-75,40,-43,89,-78,64,98,-11,4,-78,-116,26,-31,-33,91,-82,-110,-14,-4,33,-93,76,51,106,-24,58,12,78,-41,-36,-74,-83,-68,-84,35,66,62,-31,-71,22,45,119,-35,118,28,71,40,-47,-37,-40,-15,72,21,-19,-16,53,98,-141,1,22,-64,-23,36,-14,78,0,-48,-19,55,63,-93},\
+{-86,-53,10,104,-136,13,-11,62,47,-31,35,6,44,-5,-60,-6,96,-94,79,-52,30,26,15,-101,78,98,-110,53,111,82,54,2,-40,-63,-50,113,-52,20,-25,200,-24,-103,-131,-105,107,102,-19,-80,-89,-101,151,182,40,14,71,9,-33,101,-26,234,131,-89,-65,75,-15,-7,128,-24,-103,30,-53,125,-68,-50,93,-89,-6,41,85,-47,-12,-5,65,-2,-93,-53,2,-72,33,58,25,-78,27,-46,60,-2,77,40,51,-69,-44,-7,-90,-2,81,-53,-4,-123,31,79,122,197,-55,20,8,42,50,61,90,-19,-84,152,31,50,-102,-3,65,-57,18,-44,-117,-17,-26,-75,-24,-82,-127,-134,131,-139,-22,-11,94,118,7,112,276,-138,-64,117,-115,28,99,-89,124,-158,-13,2,-7,-4,68,-156,39,29,-41,-162,107,-140,186,102,2,-121,60,11,116,-101,-26,-77,19,-57,81,127,149,-90,-29,101,11,43,34,49,-22,80,86,90,-60,-65,-65,-62,40,142,70,28,-107,-68,-122,39,14,63,-29,-44,-22,-84,52,34,-52,-29,70,-96,158,-34,-109,-16,-129,-17,79,-142,21,-65,-180,159,-38,-13,115,-190,-56,70,-66,-7,87,-166,114,35,138,-137,37,-75,48,-52,105,40,105,71,-18,85,23,52,49,54,-0,38,109,-1,-2,-86,50,109,-89,-53,20,-95,57,57,131,2,32,-58,-65,-98,-55,-52,-88,28,18,-155,75,24,-38,13,-39,11,-94,-115,62,-4,-75,100,17,20,-89,86,64,-30,80,-50,47,-29,-65,-4,73,47,24,29,60,42,-100,63,16,-25,47,62,32,51,78,-3,-13,-25,80,48,61,-93,-115,-28,59,-23,-123,-36,-56,-72,-49,52,137,38,-54,7,-150,61,-78,88,-8,91,-111,0,92,111,5,22,32,51,42,141,65,104,-33,39,29,-88,41,-129,-36,-17,-137,-63,-27,-113,102,-17,-7,-32,-189,-87,3,-21,43,9,6,86,-38,58,98,-60,-72,-32,10,25,57,1,-68,-81,-158,123,-67,-92,-31,18,-85,-86,64,-108,-88,-68,20,-58,-62,59,48,149,-28,-9,-77,44,-81,77,-98,42,-36,-1,55,-71,20,-3,73,-76,30,-36,129,-35,22,18,41,-105,-116,-70,-33,-180,-150,-68,-160,-90,7,11,-94,-9,-55,-134,86,-59,14,-66,-186,-72,90,-4,97,-91,-13,21,-0,-73,-39,-60,117,-88,20,40,-85,91,-56,-5,50,-38,-4,14,85,35,-10,-105,-37,55,-46,-13,56,-7,-5,-149,-20,13,-66,-152,50,-72,-38,-117,51,0,-75,-14,54,-3,72,42,52,50,43,2,-40,-117,-44,-20,-97,64,40,83,-29,-0,52,-26,-23,3,19,88,-82,-51,-52,-87,45,20,28,72,43,-13,66,-8,135,-43,-44,5,-127,-114,-39,-63,-110,35,-139,-97,-59,-34,-48,-19,-94,71,-1,66,-74,-49,80,-103,7,58,-64,-118,-28,107,-36,-16,115,57},\
+{43,-93,-1,-15,64,-16,-75,-93,2,21,-23,2,-83,58,-35,64,-13,38,-8,71,8,-15,-11,2,71,82,-32,-110,18,-100,-51,81,-90,9,-31,-3,-13,71,-81,102,-65,-44,43,64,-75,37,-58,-60,43,-0,-26,18,-56,-43,-35,-74,29,42,-15,14,-80,35,-89,13,79,-32,-82,-8,-18,74,103,-48,-37,68,9,-48,-117,37,14,74,86,-4,-80,-37,91,83,49,70,-54,-96,53,83,26,37,-57,-1,19,22,-11,15,-53,65,47,16,-29,-24,-103,23,88,-32,-81,-34,43,33,3,45,-117,22,44,-90,-99,64,35,29,-52,-6,22,-17,84,34,38,-50,-61,15,-16,43,-68,-62,23,-21,-85,25,41,10,-56,13,-53,-4,28,-74,34,29,109,-30,22,7,-141,107,64,-25,50,7,-13,106,-13,37,51,-112,-45,11,24,-26,-82,-0,81,56,-132,-85,83,-61,-28,-23,10,-13,18,93,44,64,-66,36,81,57,45,27,-80,101,-0,26,49,75,-25,-83,87,38,-49,-17,-101,70,-32,-29,-65,12,-99,-65,19,-91,-25,-16,67,-128,54,91,-2,-87,19,37,33,35,13,79,38,86,-48,-14,-56,-30,39,37,-7,21,16,41,41,-79,-135,-8,65,74,10,31,-105,-15,77,-81,18,76,-44,85,37,14,-56,-23,-33,-48,-49,-47,-102,100,-60,72,-80,40,41,-71,-26,-64,69,-45,-17,-39,14,16,66,10,54,100,-71,-36,-9,-22,-12,52,24,-77,52,-40,27,76,67,-18,-95,95,76,88,-77,-67,87,61,7,-41,-49,69,-80,-0,-66,-92,-49,51,-17,-67,-95,6,5,14,100,71,-16,118,-40,78,-30,-12,-36,-63,-61,8,-68,19,-57,-61,-71,-135,-85,-12,66,-99,22,-175,-69,43,-61,-79,50,-62,64,-74,-38,18,63,-67,-16,-42,-31,76,85,-25,86,44,30,-56,95,125,144,19,82,16,45,59,-70,-25,-1,-35,9,88,102,-110,-0,-65,23,93,42,-121,-14,-78,55,-13,-9,-35,9,-83,3,-119,-78,86,-39,-14,49,-51,49,-10,-87,108,32,-1,-75,-17,112,-18,-16,93,-73,79,48,15,42,-36,14,60,19,27,0,88,-29,-26,72,79,-52,65,64,148,-75,89,46,102,-23,-18,79,-69,1,119,45,21,84,-16,-33,-82,47,-76,36,31,-78,41,-43,-81,45,14,-119,15,-10,125,-42,38,37,1,10,103,68,51,-46,-28,-22,74,-107,59,-70,-26,-65,-2,33,-66,-77,-58,84,-63,-133,55,-5,-98,-36,35,-50,-29,-15,-113,-33,36,58,-22,55,-40,18,-40,82,52,62,-56,31,23,-14,-48,39,-3,89,70,93,-82,64,94,-54,-85,70,-4,42,90,-74,9,46,-56,80,41,69,-23,80,49,1,64,3,122,64,-58,-19,77,95,11,13,-22,-57,-40,-62,-95,30,38,-79,37,-34,-136,-5,18,-4,3,-72,21,-68,101,-66,29},\
+{53,-67,-79,15,-38,84,-21,-5,91,15,90,-62,79,-60,-21,91,84,0,-1,-68,-33,25,-76,-64,-105,49,-8,-43,-3,-54,26,-53,-12,-81,-60,-36,-8,36,-98,144,18,-28,-141,142,-130,-50,22,23,63,62,-25,-48,-44,-33,-32,-18,11,78,-18,30,-84,-84,-30,-126,23,-76,-105,-152,101,24,-40,-33,4,-89,18,36,36,17,-30,46,-3,28,-20,7,-90,-41,-38,-64,59,31,8,51,63,-79,92,85,-75,-16,15,-78,-61,-50,20,8,-37,81,89,-21,60,-6,116,-29,-95,87,21,-12,21,85,11,-56,-87,-47,62,51,12,-39,39,37,-51,44,-39,-21,-32,-76,-52,-3,-55,-4,34,-21,114,34,-45,-39,83,-64,25,60,-51,85,84,-132,-53,78,80,45,52,-7,16,84,15,-27,54,32,37,50,-137,-55,-121,42,-87,45,-89,-88,-94,-85,26,35,-61,-55,16,-63,-48,71,54,-79,-23,-62,48,84,13,-60,-49,86,-34,-45,75,-4,41,24,41,-88,0,82,-125,-38,20,28,21,-60,-54,95,105,43,-67,-31,47,-37,126,20,-31,-21,75,60,14,-60,-70,74,-74,60,-34,-11,-27,-84,-63,3,-69,-66,55,-1,-62,-79,8,-18,-86,7,-168,-83,31,-106,37,7,112,49,-9,-81,-12,64,84,-6,81,-45,-53,-47,-65,-30,-23,-59,-101,31,11,-2,-2,0,23,28,3,46,-63,30,-98,30,-7,-46,79,-30,-58,-23,91,88,-94,-36,-77,53,39,-33,84,-49,47,-33,17,-13,-7,37,-59,70,-21,17,4,-62,14,-46,88,36,71,-48,56,71,78,72,-59,-7,-15,89,-81,101,82,17,-19,-25,61,-63,2,-73,68,10,41,8,4,79,1,54,-108,-98,47,-63,-44,-85,-90,5,-39,58,-78,-36,-85,-91,-7,57,-56,-18,83,-115,-47,96,-43,-73,-70,-65,-52,37,45,103,38,-51,-4,35,102,-46,-42,38,-74,73,49,31,-56,-29,-46,7,11,30,-72,31,-13,22,-17,-65,-40,-85,101,-65,-2,30,-55,31,8,-33,-24,44,-37,16,37,82,15,-28,49,21,-24,-49,70,89,7,-35,49,5,-8,-28,-66,-113,-59,72,56,36,2,9,77,33,40,-63,-25,19,-17,-9,-96,-118,86,22,69,-98,65,-8,-22,37,92,-43,18,89,33,55,-16,6,-49,-63,-50,-31,62,-113,-116,9,87,81,-25,8,-118,-4,-37,-105,92,-79,46,-62,-19,80,-9,42,39,-48,-55,-69,40,-31,-61,73,-106,-56,84,13,-26,18,-47,-10,66,-106,22,19,-51,19,22,86,-53,104,-64,-25,2,-86,22,90,-67,49,64,73,-23,-59,-74,-64,-50,81,91,69,-13,-59,-16,-40,1,-81,-26,34,-85,25,80,-43,-103,5,-23,77,-36,60,-16,-51,-31,116,33,-90,-76,10,-17,-122,31,99,45,62,45,-86,-52,62,-14,19,-45,-21,24,61,-40,-152,-24,5,-56,-3},\
+{9,68,70,52,78,-12,82,24,90,26,4,-66,-90,-58,-51,58,4,56,-57,-65,-26,-67,-5,-34,68,-93,-46,52,14,-58,21,87,-96,-81,75,-69,-23,-88,-63,62,9,27,50,1,70,-16,-32,-104,46,67,53,-34,-1,-72,-100,58,11,-24,0,47,-57,12,47,39,-80,-52,55,-89,-99,-34,67,-59,53,79,62,-83,-43,-10,-54,32,-54,50,-46,38,-34,-60,25,-31,-21,34,-85,-80,92,-15,51,-44,23,9,-45,-63,91,8,-92,76,-77,58,-89,63,55,62,-89,1,24,-21,3,12,-61,49,-58,-41,-38,-41,-18,72,70,64,47,2,-13,25,-6,-47,39,42,62,-31,32,23,-1,-78,-35,28,-39,29,-53,17,82,14,24,-59,-54,88,-41,-60,-23,-10,-83,7,55,63,-5,-69,-27,-102,12,-1,66,81,54,26,-23,-64,-80,18,-101,63,57,12,-101,-80,-56,-51,45,-34,-62,81,32,-24,-7,10,-22,58,78,45,20,-81,71,18,-20,-55,-5,-63,86,-13,53,48,11,17,-16,-71,-28,-54,-92,-76,-27,90,-99,-12,-98,58,-77,3,-98,56,-53,73,-0,41,38,15,66,36,-92,76,-80,-100,82,-18,-38,-55,-68,-20,-51,-39,-27,-1,19,62,-42,-36,-74,-70,-5,-22,-32,-11,-90,70,31,-15,-92,4,16,78,-12,33,-41,93,-30,56,-68,-18,-22,-31,13,-27,45,-24,32,10,-96,5,4,-0,19,42,-80,-20,48,61,-71,24,-1,70,24,-79,-43,6,-46,92,66,-51,-5,-29,-75,-6,75,-1,16,93,-61,-57,-26,85,50,56,56,19,-24,55,23,-22,49,-15,43,-16,82,-87,-29,-92,40,4,13,-50,70,-104,-102,24,-22,-45,27,55,-87,-61,56,2,33,32,-29,44,-109,-87,-68,37,-9,-11,-45,56,24,42,-15,-66,-92,-23,51,3,26,-26,-93,-92,5,-25,60,-33,-5,12,68,-32,22,-7,39,74,-75,-33,-76,-69,-6,-57,-41,-79,55,-84,81,-74,-40,82,-68,73,-20,-60,39,-43,7,15,-86,-92,58,-75,72,34,-51,42,-85,16,-90,-34,41,52,-37,21,88,-66,-22,-83,3,-39,-17,-81,-59,72,-50,-52,47,35,-57,-59,83,-41,-39,-26,-57,54,-63,46,-3,44,-14,-59,-54,66,13,-11,-23,-51,9,-57,19,-66,45,49,34,36,-74,-88,-98,62,-2,-89,41,51,-48,86,-47,-62,23,-36,-89,-68,60,62,-82,-87,56,28,-2,29,38,44,41,-84,-4,65,52,2,88,76,-51,-94,32,44,-87,52,-77,-34,15,36,-60,41,-32,-48,33,-23,-27,-31,-69,-85,-85,-88,76,-84,-81,56,14,-17,-94,39,-24,89,83,-24,53,-70,29,-46,-22,-65,14,-83,-94,-13,0,-32,-34,25,68,50,-80,78,53,67,-94,-45,-61,21,42,-44,-23,-88,-8,11,-68,-30,86,-88,81,78,63,-71,-39,50,-93,-79,-58,-15,-73,37},\
+{30,66,1,-26,50,2,-70,-93,-41,77,7,-78,-72,-97,-97,68,50,-8,96,1,10,5,17,-14,-33,-46,11,-88,-74,19,-49,-48,-100,73,-44,-111,-5,-82,-23,10,-60,57,-26,-29,14,-14,20,26,67,202,9,-34,36,138,-121,4,41,-43,-57,121,-27,19,-22,11,-123,-41,23,2,13,-35,-33,-114,-38,-63,68,48,-11,25,77,-52,-79,-84,51,-92,-98,-4,84,70,-74,-116,-78,60,29,-73,-73,-30,-5,82,-52,-31,60,-55,-37,7,-10,54,-23,-23,-83,-67,45,83,55,5,2,-70,30,59,-22,24,-42,51,30,-7,103,-29,-132,33,-32,-3,-21,-63,89,50,-17,64,-108,-98,-133,90,21,22,45,-47,-51,-115,18,63,50,-104,-112,-94,9,-70,-26,16,51,-55,-80,-125,31,-49,91,-158,8,58,16,-100,20,-150,-31,7,31,-86,-4,29,-68,22,-35,37,-20,-114,8,-45,-43,73,40,-53,34,-53,-67,-44,51,-55,-35,53,-33,-11,54,-114,42,58,14,53,-138,64,-37,-43,-60,52,-88,23,-71,53,-44,-92,37,-126,-82,41,22,48,44,57,-47,-62,0,-17,47,-36,16,-11,-0,82,-15,-74,-118,113,-6,-103,55,-95,-61,-1,75,7,-28,-50,-70,45,-79,2,6,29,-73,112,42,-51,-48,-35,9,-12,5,-17,-24,1,-61,22,12,-25,113,73,45,72,-15,-47,35,-28,-11,-83,-112,-19,18,21,56,58,-13,50,-88,-69,-68,59,-2,-39,4,58,45,-41,71,20,56,-56,72,-76,80,72,-32,64,64,12,-55,-1,-0,-76,-92,34,14,70,-65,-31,62,-66,-64,40,-71,-35,-9,-23,-127,-81,72,59,5,38,-65,39,38,54,-69,-103,-90,87,37,92,56,21,27,12,111,33,-95,37,65,-28,-60,23,-47,70,-50,-130,5,-19,75,-75,67,-88,31,-67,40,-61,-77,13,6,-93,-21,-24,-63,29,-144,67,7,-56,-15,23,84,-67,33,48,-11,126,81,-37,-13,2,-90,65,17,15,10,9,-56,-79,-82,48,-54,51,-27,60,25,4,-32,57,-6,33,-23,26,-77,-51,65,30,1,-7,61,55,40,-17,10,-53,49,43,61,1,77,34,41,-89,28,47,3,91,3,-18,-44,-15,71,84,1,-41,29,76,-104,31,-107,-55,-105,53,199,44,-132,-72,-35,233,55,-1,96,40,-1,-61,-49,-74,-41,-86,-13,13,34,-100,10,-99,-40,40,83,-39,-55,-47,89,-73,-4,-7,64,15,-13,30,-150,19,-72,-21,-78,-62,25,56,69,34,-49,-59,-52,-69,-74,-86,-75,-40,19,19,-26,91,1,-14,-23,30,111,-93,-89,-49,-72,-35,-83,-80,40,69,-93,-90,75,-43,92,-56,-84,-70,-40,60,-9,-13,4,-27,-68,-47,62,-99,5,10,20,-37,-61,-6,-72,-64,112,103,-43,-81,-127,87,37,-41,92,-44,51,-34,-99,14,52,6,63,51,107,49,-91,-26},\
+{-83,-31,107,-87,-42,-62,51,-33,8,-112,-94,-64,-96,114,-25,12,17,76,14,77,32,-9,91,70,4,-65,30,-71,-42,-98,108,-9,39,154,114,31,-7,-1,21,-57,89,95,33,8,-12,-94,-54,246,-1,41,88,41,-9,-99,-120,10,83,27,58,-31,123,-119,-69,15,-58,-142,50,85,20,-87,-70,-21,32,34,-12,-4,-4,55,30,-39,-50,-3,-22,-26,64,78,-27,36,20,-79,-78,-57,-15,95,14,-72,48,34,-2,-36,38,-69,115,-71,-8,59,-4,69,23,-160,119,160,46,4,122,-74,-22,29,50,99,53,-47,-119,12,-24,45,-135,41,-100,37,-16,-49,110,65,-101,93,33,81,68,76,-90,-22,-141,-130,-81,94,25,114,-85,-17,-10,-71,60,-5,-123,-111,-67,55,30,55,-11,111,-3,42,6,11,74,-3,-19,87,-72,-46,148,-66,-30,33,-57,115,153,73,-84,92,49,27,-99,53,-79,-64,-48,25,-61,-20,-92,-104,-75,-49,-42,-70,25,-101,34,-124,-41,4,-81,37,78,63,-24,77,36,-114,-103,16,44,51,-150,19,9,-31,-134,41,-38,-25,29,20,-56,-43,-5,-60,-18,-27,-13,-3,13,-2,-28,8,183,76,65,93,-32,7,90,-26,-13,-20,-17,93,-15,-101,-162,-15,-25,-9,-23,6,94,-40,7,31,53,94,-34,-103,-30,71,-34,-55,46,35,17,-16,49,1,-63,17,-2,-56,86,-115,104,-40,-140,31,-114,3,-83,66,-74,-78,18,-42,-21,28,-6,41,74,-17,-0,78,70,-94,70,-34,91,-49,76,-25,-60,-70,45,-92,80,-27,-59,34,60,48,-26,-99,-10,-1,-77,5,-44,-134,2,-117,32,65,-53,-93,67,12,120,9,-6,-14,17,33,-8,-60,35,29,-53,91,-62,-12,89,59,-31,39,23,14,77,-13,70,-36,93,9,20,-24,44,-13,-15,8,106,-1,12,-88,-71,-105,-17,-12,-162,-88,-56,51,101,7,17,35,-107,11,161,-1,79,46,106,41,218,78,-45,170,12,110,63,50,-11,157,-48,79,-33,90,141,36,41,-13,80,16,81,-14,-102,12,-9,-26,-45,-41,-29,26,92,65,8,-37,-90,101,106,-16,-98,-61,52,-58,-24,38,3,91,-66,25,91,100,87,-0,-124,42,-56,53,-65,2,-157,75,60,97,-29,-17,-36,27,110,-37,19,23,-151,-11,57,85,-106,-121,-44,-35,43,89,-112,-68,-8,16,-2,-19,16,-45,39,-72,21,16,-65,-69,26,-149,68,6,-3,-48,-30,-36,-77,69,62,43,77,-3,-79,23,14,26,35,66,26,63,-13,16,-8,-74,26,54,114,45,-89,42,-69,-61,5,15,-45,-2,-12,20,3,-16,-8,33,96,75,-98,-22,-77,22,12,-3,-7,52,-144,-20,-19,38,-25,-38,-61,-5,26,40,7,-70,-18,-21,-26,26,-83,37,36,-73,87,67,-128,-7,-85,-95,92,21,1,77,45,71,18,-15,-107,-24},\
+{-4,44,-15,53,-70,-37,-26,-12,26,-59,83,33,-58,-43,14,-24,-78,45,-18,49,16,-19,8,64,-56,-73,67,-18,27,-47,-4,-26,98,-55,0,-43,-24,-168,-171,-28,-150,67,137,-116,79,67,-79,-57,72,-42,111,12,-73,-37,48,4,106,66,9,96,-98,-29,71,-2,-52,87,109,14,-66,26,-81,-73,-41,-45,13,40,15,-42,-60,-30,22,-43,52,-15,73,-58,31,49,-56,-32,-49,63,75,-1,-34,21,-68,19,-10,65,-26,57,39,-49,40,-11,-67,113,46,-119,-57,-104,-88,-4,31,-153,62,-59,-86,37,63,7,48,4,-24,-57,-76,0,124,40,10,46,19,-6,54,62,52,43,-49,-23,45,22,70,93,92,33,33,28,-191,-93,78,-58,94,61,43,-9,-75,18,-60,46,-26,4,13,-105,-40,123,20,35,35,-17,87,-3,64,-93,-108,55,-10,-38,-9,46,-80,-56,-106,35,-11,-53,-91,-120,-83,45,-110,7,-73,-114,-28,13,-18,54,19,92,-86,68,55,-70,-12,-50,4,60,39,-56,46,-38,-2,22,34,-53,88,31,-92,-222,-129,-73,63,-48,-22,-39,-68,-69,25,-40,36,60,-23,-84,132,-33,136,46,-4,-11,-24,-32,28,97,67,-27,-75,-20,-54,-67,-43,17,-2,-28,-96,28,-52,-79,-20,32,24,-7,-74,39,-26,5,106,139,79,30,-2,45,-41,89,69,-68,33,25,-27,77,-33,92,-84,102,-114,34,52,20,-39,-6,-56,-31,-92,36,-13,-59,26,-20,-25,-37,-3,-64,-38,49,34,-43,22,68,-36,3,-55,-84,-93,61,3,18,-93,19,91,-28,20,-88,-81,-64,-9,-63,-47,-67,-86,52,15,30,-102,-64,13,3,-46,-60,-16,34,-58,-71,-87,36,59,68,36,6,35,-59,25,-77,-62,98,-74,-63,34,-24,-17,41,-20,-39,-3,28,65,-90,57,14,34,-8,124,94,99,25,-8,98,-18,73,24,138,119,-23,131,-67,43,-32,-22,-89,27,84,78,-83,121,38,43,-24,-51,98,63,60,64,28,1,-80,-60,-37,20,-92,-89,-61,94,65,99,-60,-48,-89,-25,108,-21,62,15,-91,70,-45,-73,-10,-56,-91,-68,-9,38,55,13,-116,122,139,-34,-26,4,-46,-57,32,80,100,80,40,-16,26,-54,32,4,-45,103,122,-64,-113,-184,-23,50,108,-68,-7,23,-108,-14,28,19,185,42,-60,-21,-1,73,-48,-59,23,36,-60,-30,-75,-9,68,75,-63,-79,-38,85,58,12,87,80,28,10,17,80,142,-54,-5,-17,-12,-28,34,-18,-15,-3,65,84,-82,-70,-76,-91,34,-29,30,22,-55,-48,11,-36,29,-1,-17,-26,-83,-86,89,2,0,60,-40,-65,30,-40,-18,-15,-2,-84,-9,93,-17,-124,38,-19,77,83,-23,-74,68,35,2,39,82,-11,-57,65,-45,-86,-60,17,114,120,-25,-60,22,-85,81,77,-4,-2,14,-129,6,79,-77,-39,-46},\
+{26,-86,46,78,-31,-93,-50,4,3,-105,81,59,-4,73,93,-44,-46,-39,87,-27,-7,14,-36,45,52,79,37,-3,-27,-47,10,15,-42,75,41,78,-10,69,57,15,-94,41,-18,4,-73,23,-16,-54,-37,-33,68,22,-90,39,-63,73,17,-97,-65,-83,-77,-70,-23,-57,-83,58,-22,-68,60,16,66,-51,16,43,26,-49,55,39,73,-33,-22,-13,7,-5,-55,-27,58,13,30,34,69,-11,64,45,-85,90,-91,3,48,17,76,-5,61,34,11,78,-69,-26,-72,-91,-82,-30,-82,77,-29,86,-49,18,-69,15,94,21,59,-108,77,91,-35,-87,47,30,15,-3,61,-38,79,-30,-84,28,-13,-48,19,-107,-29,80,-36,-89,40,-89,62,0,-69,-62,-98,21,8,-62,84,84,-17,-7,-7,29,-86,-34,7,-95,-44,-34,-33,30,-39,-24,31,-67,18,4,-53,60,13,0,79,-36,-65,-43,46,-17,19,-65,-42,-14,-67,-5,-62,11,-9,76,47,62,-21,71,42,63,-38,14,-82,-36,83,-48,28,37,23,88,60,43,26,-79,-73,-1,65,-95,-17,47,-43,13,-14,-81,-80,27,-74,30,48,34,50,-73,-50,-72,83,51,-82,-90,65,73,37,54,-31,-1,-30,-27,-4,44,-16,-32,-86,-66,87,8,14,-44,-96,33,-14,-24,-24,-48,21,8,93,-50,44,6,23,-59,-69,21,37,-77,2,-90,64,72,-25,-46,68,80,55,-7,-21,-44,62,94,53,18,-65,57,-78,-86,51,19,-84,44,81,32,-2,-81,-43,89,-47,82,-75,66,61,-70,-42,16,21,-78,-54,75,-6,4,69,-88,71,-68,-15,12,-21,-44,-58,26,-46,-66,-51,25,-75,45,-19,45,40,4,41,-100,-81,-66,65,-8,17,-39,34,-16,-23,2,-71,82,-92,-49,-59,-69,-91,-40,-39,-3,-35,57,-26,55,79,-5,1,-29,-89,-92,-92,88,45,40,2,9,-86,38,-33,-87,-24,44,-72,-83,-56,-37,26,-16,75,63,-55,61,79,-28,-17,-7,-5,71,74,-50,-0,56,-71,-84,-51,92,52,-94,-41,-71,-44,-77,14,-20,21,-30,40,-23,12,47,-85,-7,-50,85,91,-5,57,4,87,60,1,-74,-80,-73,-39,24,-48,83,-32,-25,-3,60,-22,-19,31,-17,-28,24,-66,4,-5,-76,48,-51,-38,-89,-3,33,2,82,20,86,-54,-21,-3,5,-61,-42,78,-86,79,75,-83,-35,65,-56,39,-65,41,10,53,37,-79,63,35,53,-66,-98,46,61,-83,84,43,-66,-48,82,-2,79,-74,-51,-33,57,-59,69,23,-44,72,-59,-75,22,-4,14,29,8,-88,-74,-68,-84,80,73,-7,-19,46,66,85,-7,3,-44,83,-36,92,-60,-37,-12,84,-20,-44,-44,-74,14,51,59,41,39,35,-79,52,-53,-3,24,-52,70,40,35,-44,39,45,66,-91,-12,-22,68,-30,43,-83,-69,-100,-65,6,-47,74,-111,67,-65},\
+{49,-21,91,-99,51,6,-73,-49,21,-67,1,44,3,63,-40,-35,-18,-63,-87,83,-37,-67,40,84,-109,73,78,25,-12,67,18,47,-44,-3,-51,37,-43,-8,73,51,-52,-148,-38,-1,-52,104,-3,27,-69,-81,71,-34,-48,3,-103,-135,-34,39,-28,-65,67,-125,113,65,-10,53,35,-39,57,60,-20,-40,-45,24,15,94,-15,48,-91,77,-45,-8,4,-24,-96,-35,73,-12,60,8,76,62,-28,-37,29,-95,-5,34,53,-26,87,32,-49,-44,-79,-44,44,19,-26,-97,-100,25,47,-55,-68,27,-110,-50,114,-26,26,12,-43,-22,70,40,-142,-11,-32,50,59,-47,4,-47,93,25,-75,-67,-83,-34,-23,-49,-96,-12,-50,2,-126,-33,-93,15,-95,-39,85,72,-78,-11,10,49,45,6,18,-39,-39,61,77,8,104,38,8,-59,12,49,-88,38,-58,5,-12,-9,-41,-16,-95,56,-62,-83,-39,38,43,5,34,-7,-98,57,-75,18,31,2,-74,-24,61,59,11,-96,-101,-46,42,72,2,-71,61,17,38,-66,67,-32,73,9,-74,70,-60,81,6,39,-104,-59,49,51,4,-119,-43,-39,-43,53,-43,-62,-79,-65,104,66,60,125,-163,49,42,106,-32,79,-91,-12,-53,-64,36,-111,40,-87,24,-5,-49,27,-97,-54,14,12,-15,31,-98,61,-32,50,-62,-80,-26,111,88,59,-44,28,-18,-16,65,-8,57,-29,13,57,44,106,12,17,78,42,83,-22,3,44,14,20,-69,-15,-51,61,41,10,-48,92,-34,-70,-1,-92,25,-36,-13,29,68,-88,-8,19,-38,40,59,97,54,77,40,-68,-55,8,-23,-61,-88,-40,-63,-71,31,-22,-30,-25,77,-118,-40,27,135,14,-63,-20,44,12,-35,93,23,-118,-75,19,-13,-28,-15,-117,-114,37,-44,-38,92,-35,28,69,-52,-25,92,72,129,-32,37,-24,94,-12,42,-91,18,-175,-63,84,99,52,-48,-42,-51,73,-53,40,-40,-10,-88,10,-5,-73,80,-39,44,-63,-93,-3,-33,-9,-75,-54,-82,-19,-21,-29,-77,68,-21,51,-50,23,-46,-109,88,-7,-67,85,38,26,93,-37,70,-86,52,4,-68,-36,-40,-7,-35,-51,-36,67,-45,88,-86,-49,49,15,24,4,79,-37,-63,-64,-30,7,-51,39,-35,17,-141,35,-38,-18,-14,26,34,187,-80,-128,-31,54,40,42,25,5,-68,43,62,45,-5,-0,24,117,-38,65,-24,-85,84,-45,-32,-10,19,4,87,1,-39,-62,54,-51,26,112,-58,-1,-85,3,8,57,-34,6,86,-37,-8,-55,39,-44,92,-4,89,84,-23,37,10,-33,-76,79,79,22,-53,84,8,-51,-90,-7,51,-75,69,-36,40,81,56,-54,-41,13,-53,-19,-4,87,10,-9,-39,-21,-11,-64,81,-110,22,-12,-6,-34,23,-32,-84,-3,-43,11,-28,57,-15,67,-100,-26,8,-20,-18,17,-120,-28,-5,60,-14,-4},\
+{-78,39,16,-28,51,-30,-31,-36,47,20,51,-3,20,88,-32,97,94,124,70,83,9,-5,-69,30,14,67,56,85,-81,55,-44,-82,-75,63,-29,-67,46,-11,-74,-94,128,-56,-81,-78,-89,-21,48,100,-177,100,39,-0,43,102,-53,17,-45,-2,-66,-72,119,-0,46,54,-35,-83,-57,-45,35,60,0,-115,2,81,-86,43,47,111,-40,67,-57,73,15,-30,-103,-79,-63,-12,-7,-3,18,-81,-32,15,59,70,37,-58,-66,60,79,-41,-69,-2,-1,-14,-87,12,-40,-32,7,137,-52,-97,8,-71,-26,-59,-4,2,-144,-39,-37,-70,121,28,-5,-73,10,16,-31,-46,-18,46,64,-8,-126,21,44,-33,33,-41,-246,-90,-102,-80,18,55,-34,-153,-122,-86,-77,31,-117,41,9,141,111,20,-90,-82,106,-68,122,-15,57,89,4,75,-10,-29,-98,53,-100,-63,-14,-62,61,43,-105,22,87,50,3,71,32,-45,-24,-19,88,-74,-19,8,39,-52,-80,-0,34,35,-6,-40,44,-104,61,-91,5,25,-37,-37,-100,-28,-19,-58,72,39,-53,24,-50,42,-8,32,-119,-95,-56,54,35,-10,-36,127,-64,-15,-3,139,54,-18,-16,43,53,105,-72,109,17,-39,35,83,-10,-0,-56,21,-101,-112,61,-27,5,3,9,83,-72,57,-23,45,-77,94,62,-52,-4,61,60,60,62,19,-45,-47,51,5,43,103,71,7,-76,83,-15,4,-29,-20,-75,-99,18,-79,72,-89,48,0,60,20,92,0,-24,-54,55,-2,62,97,-51,-47,-28,64,-38,-24,93,16,-61,81,13,-45,60,40,57,62,-53,-117,-81,-5,18,39,-18,-47,-77,-100,-69,11,-101,-94,130,14,-78,-70,-23,131,-43,82,-71,11,43,-57,-56,100,-77,-45,-24,-26,-33,-74,-34,-101,-93,42,-105,51,114,-48,104,82,-46,-34,-35,-40,-64,120,50,-92,-17,-40,81,62,-52,-154,-47,-87,92,128,48,-64,11,73,-68,-127,-45,63,85,82,86,-7,71,43,-64,41,-73,38,35,24,-33,-6,59,-74,32,105,0,-24,-81,9,9,-26,-64,95,88,-1,101,-11,18,-46,-22,37,5,-102,72,30,64,-82,-158,-75,54,4,87,43,15,-72,-32,-51,56,-29,-121,-90,71,19,57,118,-50,-125,50,-29,-8,-56,44,22,-36,66,-9,-112,-52,46,20,23,13,10,62,11,-23,-88,51,-9,-89,-56,58,-17,-14,16,-54,18,46,-31,56,23,41,-124,38,-6,72,-54,42,-51,-86,22,139,60,18,6,-110,15,-35,42,-63,23,88,29,76,-81,129,63,-4,75,79,3,99,-13,44,-95,-36,-60,-31,102,-102,24,68,41,61,26,-98,79,-70,-12,-12,21,-33,30,72,42,13,64,38,-81,113,10,25,107,59,-1,122,-81,-100,-35,-77,-116,107,84,26,-135,-19,-93,-14,-32,61,-36,-90,-36,12,-66,-20,-29,-35,30,32,-74,-55,11},\
+{-45,-45,-108,52,-88,109,-78,33,50,-28,-76,98,-14,61,-100,-27,71,-34,-70,-69,26,54,-67,80,-62,-65,-51,86,32,16,-43,3,64,72,70,49,-89,-141,-48,-39,-8,-29,-120,-115,24,-20,102,55,-122,-62,-76,154,27,-78,-33,-20,-59,99,74,5,7,134,-24,22,113,52,-20,24,-59,-13,-34,23,-92,60,77,-59,-3,24,-69,-78,91,-22,-29,-21,71,80,-65,74,104,54,-20,-88,34,-25,81,-102,-80,-39,-16,-9,42,-26,19,-64,41,-23,29,74,-151,-57,59,61,58,-31,43,-155,82,-71,104,83,6,-35,-113,-72,-41,-7,52,-82,17,21,-2,31,69,17,-82,-15,-21,-85,-47,99,48,-48,-15,-9,-108,-70,-104,-20,-105,51,49,93,59,139,-61,91,-22,116,112,75,75,-44,64,40,-1,94,-60,75,-0,47,-9,69,82,-12,62,15,-62,-20,-54,85,-73,-38,46,49,-6,100,-2,-18,59,96,126,54,-69,-93,95,-58,-15,12,-152,9,30,31,45,-70,42,-93,7,-2,-1,56,58,59,65,-3,-57,60,-170,-50,14,-53,-32,-46,-71,-154,-92,68,-90,83,-83,117,114,-81,-61,156,72,-12,-70,-45,3,160,-96,-99,138,134,36,98,-43,111,75,-5,37,105,-26,-137,11,-23,26,88,-150,-118,69,29,47,141,-37,-107,-16,31,-40,84,-140,-97,-68,17,-6,-13,-93,63,73,-103,-93,96,81,-9,81,13,64,-64,-73,69,54,-65,88,74,-47,-36,-4,67,66,19,71,-21,35,-24,-4,-40,53,81,74,24,-43,-47,95,-59,-35,79,-76,81,-35,60,72,29,61,-69,-10,-131,-72,-104,39,2,47,-32,-76,-221,-83,34,-69,-108,-88,-134,-8,42,36,-84,17,10,-57,-116,56,14,70,32,61,23,37,-3,53,-29,-2,-5,-31,78,121,115,21,-57,78,147,94,-24,-23,44,-39,59,116,25,-42,122,-24,-39,-54,-13,83,66,81,20,-24,6,82,-95,-41,-40,-22,107,57,-13,-22,63,-77,-125,-50,23,-5,19,11,5,-26,-61,103,-99,37,-57,71,105,104,-27,20,75,-59,-69,80,63,57,41,-54,4,-48,-38,63,56,21,81,-55,-26,107,-22,71,99,-2,109,-95,-56,178,64,-48,69,11,-25,72,107,86,42,-6,67,24,-51,60,64,27,45,-61,-41,77,-38,-14,-65,-128,-34,-84,35,27,-36,3,-70,-13,61,13,21,7,107,-131,1,-4,-31,-44,41,-107,11,-32,-14,-46,109,41,-35,-67,-26,117,32,14,-35,64,48,75,54,104,114,-11,83,54,28,10,-40,-36,85,59,19,-47,39,80,59,59,-26,-9,59,55,-58,54,79,100,-50,13,-81,13,25,59,11,44,34,-30,12,-23,-67,-21,28,-26,-70,39,80,20,-51,-32,-64,-33,-70,-36,-50,23,97,-54,-54,-104,65,-97,-62,-14,-15,-69,-64,-8,-64,52,-150,49,-108,26,-39},\
+{28,17,69,-56,-11,-15,-22,-70,59,-17,80,30,-21,-19,-59,31,-20,12,-85,64,-40,-26,-2,54,-30,40,-66,51,-94,84,-26,-40,51,-74,-27,-22,69,55,-48,-45,-17,6,-0,50,23,-17,-54,-26,59,-12,49,-106,-58,39,-13,-97,-59,-35,76,-103,-81,11,47,87,109,-110,-72,60,-67,39,66,-96,-51,76,-5,6,72,30,-44,-95,-93,-9,72,14,21,-88,-65,-23,1,-98,47,-1,27,-16,83,-98,-45,15,-12,-90,-3,-16,75,71,45,50,50,44,-21,-18,51,59,49,95,-47,31,20,96,-93,38,58,-62,43,-12,17,5,-87,-77,-44,86,-54,-18,19,-7,-66,-50,-57,17,-15,-62,52,118,-37,-36,64,-14,30,48,24,-52,-71,22,-66,10,7,63,22,47,-86,-93,60,20,-73,81,39,-75,-2,-84,73,-103,-59,-41,-50,68,-24,-52,-51,-97,-57,-41,39,-82,-5,-90,65,12,98,-62,-67,47,-84,29,-34,-45,97,17,-25,-75,-52,21,61,-22,50,69,84,-91,29,-92,16,17,-15,-35,124,-9,-68,-20,77,71,-16,-5,-26,34,37,15,-52,-57,72,-48,34,-61,46,-78,-12,-26,27,75,82,-2,22,-67,-23,60,-77,40,49,22,81,30,31,20,-9,-17,-19,31,63,65,-27,12,32,-43,91,55,-4,52,-62,53,-84,-9,-92,-42,92,-9,-88,1,-88,72,-72,-23,-22,-5,-27,-26,69,26,71,-12,-68,-71,-1,18,59,1,-75,-72,45,83,-94,-64,-85,-19,-15,89,-62,80,13,-19,1,-0,71,-47,17,53,9,-68,-14,-51,-62,38,74,-43,-22,27,-1,67,-76,8,85,26,28,-48,16,38,-86,-61,-84,-14,71,-71,65,-77,-79,27,86,-58,-20,-2,-3,8,-81,-73,-84,10,-16,20,83,-30,-82,-93,-85,6,7,-95,-63,-60,21,-7,-31,-63,-66,-79,-8,92,-87,-81,51,86,72,57,-99,77,-3,57,93,26,10,-54,-90,-77,-55,67,-99,79,-58,-38,-55,-72,-86,3,-43,72,-46,83,8,86,-85,77,-31,-26,23,56,-21,25,-40,-100,73,9,62,48,86,-7,94,-20,6,42,-63,-44,-77,-6,-53,-84,-34,81,-63,42,-53,-29,-16,-63,-50,24,-40,93,17,-23,-26,13,6,-94,-36,96,3,90,14,11,-32,-40,9,12,-6,-34,-63,19,-79,-8,91,-110,-82,-28,52,39,69,-66,70,47,12,45,-8,-37,-33,80,-39,59,62,19,-19,-43,55,24,-8,-78,-56,67,24,47,-65,14,51,-92,-80,-31,57,17,63,17,-28,-5,-67,11,11,-60,14,19,94,25,65,-89,-43,9,17,37,15,15,-56,82,-11,-89,12,-65,-88,-9,47,-90,81,78,55,-50,62,-48,38,27,-71,-89,-61,-29,-64,-59,88,-38,76,-79,68,37,-91,-43,-38,10,67,55,-110,-56,10,79,51,17,49,87,-74,16,31,66,-90,-70,104,100,22,40},\
+{60,55,65,-63,-14,-72,-62,21,-16,-26,-52,-43,39,-36,-102,9,56,-73,7,-50,-12,42,77,-44,-33,98,-128,23,86,-17,38,-10,19,100,-55,-2,129,103,-122,1,-39,-20,134,134,-92,-114,15,35,19,105,24,28,22,-65,-28,67,83,44,96,2,83,-87,110,-90,9,-111,7,11,96,70,52,-88,37,-69,-45,-47,45,-23,27,49,-58,30,57,15,59,-87,20,-33,78,30,-70,-44,-24,27,-38,21,-9,-17,33,95,55,-44,-24,35,-62,58,83,-74,88,3,24,0,11,87,7,47,-108,47,76,-20,7,10,-17,-29,43,18,9,-12,-53,-70,-8,-36,10,39,-31,-71,-6,-106,28,-47,36,25,72,-155,-27,68,-13,28,-16,-68,-61,-66,43,-182,-106,7,51,39,-119,-125,53,50,76,-24,-11,41,-14,-80,27,5,-25,78,76,5,-56,66,-123,-72,-64,-28,62,-56,-61,13,-1,20,36,102,-27,-113,-25,-75,-79,-32,-37,59,-47,47,-77,-68,6,-88,95,-20,80,-48,-72,-37,87,-4,-2,19,-52,112,73,-17,-12,23,15,-139,5,4,38,81,124,1,-115,-56,-109,-50,16,-126,-76,-43,-55,-37,-54,-31,101,-89,66,-13,-67,60,-8,8,-44,76,-103,74,85,-62,71,-83,161,-7,-6,75,102,-50,37,-22,86,-20,76,35,17,92,-79,2,91,-98,-47,-23,-53,-51,-15,33,-63,36,80,-133,-66,2,43,64,114,42,33,-30,81,61,-92,55,22,-12,30,-55,93,34,-0,-5,15,-75,-21,10,26,-55,56,9,-15,-84,13,-56,24,40,-60,15,78,83,-42,-59,-65,68,30,-58,-26,98,-59,76,95,-17,82,110,89,99,57,13,59,63,-52,-148,3,58,-52,7,29,-6,-102,-75,-35,-93,-47,-103,-60,64,96,-68,61,-14,-37,13,-68,-96,8,121,57,-48,-66,-23,-48,26,-41,1,-47,41,-101,-17,-59,32,56,104,60,-59,-102,10,58,-83,20,-4,-89,-95,55,7,-38,-44,-13,21,105,-12,62,-34,91,16,-100,-86,11,31,-79,-84,6,14,-2,-30,-83,-90,88,-69,-15,-76,-22,-115,-7,19,-29,-85,-49,-32,-69,76,-7,59,-3,-33,-63,194,9,-22,-73,10,-13,-19,-104,-100,-148,-84,57,61,-4,-144,26,6,22,5,-10,-154,38,39,57,-3,38,-67,-105,13,-44,-93,83,60,-82,-94,-3,-132,-68,14,-32,103,31,-79,-28,47,-34,-53,67,1,-27,96,72,43,14,-26,-8,35,-65,-82,-104,100,-37,48,-29,-18,-4,124,-40,60,59,46,-64,22,27,0,-65,79,-24,-11,47,21,80,-52,89,56,-26,65,-50,10,18,46,-77,61,-20,-14,13,19,-5,71,-62,-7,63,65,34,49,-18,-3,58,-47,52,28,119,40,38,-31,-28,87,16,-62,-45,112,-89,49,-44,27,40,45,-20,31,58,49,-72,11,-85,39,48,49,-40,103,-47,-109},\
+{-6,-101,55,78,-46,-81,-14,-121,13,-82,18,-60,35,-78,28,39,-18,49,-52,77,-99,34,110,-2,-13,44,-49,51,-38,103,41,8,-38,-100,74,-48,37,126,-59,-108,-79,-54,102,-70,109,-136,35,17,-18,-44,-12,-92,43,86,-8,59,84,20,50,-52,88,63,15,-11,12,10,-59,33,52,225,-141,100,45,71,-48,-89,58,38,-2,-60,5,-17,-41,-10,-107,64,77,-66,39,63,75,-10,54,79,-46,-40,14,34,22,-89,-4,-56,-46,7,-62,55,-58,76,35,91,-53,-132,-34,-39,-19,17,-57,70,87,-54,95,6,9,97,72,19,5,9,50,128,-107,-60,48,33,6,149,-87,141,61,-206,58,137,-11,30,31,-69,37,104,135,-66,41,-118,-161,76,125,-41,38,-59,-140,49,-96,-46,9,-42,-41,112,118,42,61,-36,-114,88,-34,123,-82,-120,-76,14,-89,76,-18,34,-75,122,53,-41,26,60,69,89,42,-12,40,77,38,123,48,-59,5,-113,-4,-63,40,-62,65,-115,54,90,54,78,-97,-115,10,19,47,72,-3,-61,39,5,194,45,-103,-59,-122,51,18,97,2,40,-204,60,-43,-88,32,-42,-114,100,66,-16,142,-110,27,44,17,75,-7,-66,-110,31,-87,-36,106,57,-86,-134,15,64,-36,-78,-12,-61,67,46,-6,16,-93,112,51,-33,-23,73,17,-72,118,16,-110,-61,122,85,81,-39,-110,85,-32,13,-43,-60,57,9,-8,92,19,31,-82,45,-67,88,-43,11,34,29,-63,18,-13,63,41,12,-13,72,3,-83,-80,-37,-15,-51,23,16,21,73,93,18,6,51,3,36,-63,70,-15,-19,65,-43,-98,-42,-129,-67,42,-63,-1,-90,-30,-46,21,97,-141,-146,-21,89,149,26,5,-90,-128,24,-9,72,36,14,38,64,20,-34,77,-42,44,-20,84,129,11,-50,159,131,60,-25,-58,-22,2,-66,3,-60,13,1,-28,-124,-79,53,-8,-6,-57,-39,-121,124,-48,60,-78,-88,38,26,-96,-133,-6,89,10,-31,95,12,19,-63,-69,53,6,12,-32,46,70,91,-17,-52,-58,48,-7,82,104,-62,-78,-77,-61,80,-10,58,-83,3,146,1,167,70,-16,19,117,58,6,86,87,-22,81,-113,27,38,-122,25,-144,53,53,66,-49,-24,73,-109,19,-76,-54,11,139,117,-135,-89,-74,138,-36,-49,13,-57,55,102,-14,117,52,33,-76,136,40,50,11,-55,100,3,-5,-93,-20,51,113,21,51,35,9,-79,87,-97,57,95,-28,31,63,-22,-93,55,-23,-74,61,-9,-41,-2,83,-91,-95,64,-64,35,56,70,4,131,-113,16,-45,-27,22,8,-83,-1,11,15,50,-62,-41,-23,0,-81,33,72,-30,22,138,-9,43,-26,-65,21,-62,5,-35,-34,-69,-40,88,116,62,-18,-161,-54,16,40,-82,-133,-90,52,69,43,-49,59,-73,14,-45,15,-32,-57},\
+{-79,-78,34,54,59,62,-16,-0,8,-67,23,33,67,43,-25,77,-51,35,15,47,9,-15,5,49,-42,-84,-60,3,-0,-38,33,46,-96,16,-21,-29,-104,-1,-21,-9,133,-21,-51,47,-39,-17,224,138,-40,-139,-52,-44,53,31,-122,-39,-35,23,-178,-144,120,-115,-37,58,-40,-60,10,81,-20,-80,-44,48,32,-38,42,-22,-28,36,81,-83,-50,-25,-3,11,-44,-53,74,-63,-16,-29,-83,21,64,76,8,30,-67,56,-45,-15,-95,-42,52,-16,61,-70,-49,54,-63,16,-88,-49,100,-5,-19,62,-16,-97,11,91,-33,97,-57,51,47,79,-94,19,8,124,99,-2,-115,199,-2,33,29,-63,-65,-33,1,46,-153,15,-38,-90,-25,43,66,-49,-135,32,10,86,-51,-17,-79,10,28,-44,-48,-20,-121,-66,103,50,3,31,-58,98,61,56,11,-28,-90,-79,-51,15,73,-47,-75,-69,119,-72,-99,16,21,74,-56,13,-20,-41,-79,-7,-67,34,12,101,-90,-26,-51,47,25,37,-13,1,-45,-78,-103,-55,-49,-45,31,26,0,65,20,-99,27,79,50,-56,1,23,54,198,-60,-65,-68,128,-63,-15,49,88,50,-80,89,72,-22,-15,-65,75,35,13,-112,1,-54,-45,20,115,-121,-111,-16,12,27,100,60,-93,108,18,53,118,14,50,-116,-61,-119,20,-67,-68,-77,-14,67,28,-40,-35,-67,52,73,52,-28,-27,-84,38,-38,16,-110,-68,-91,59,1,6,29,82,59,-22,-68,25,31,-15,73,-20,-50,-92,68,-10,-75,11,71,-27,-101,6,-73,-45,-83,62,34,87,-52,-62,-80,8,-19,-0,-87,-48,-30,105,105,-58,-28,27,23,13,81,-87,-27,-69,66,110,193,75,-66,-92,-87,-77,-101,98,-65,-133,-70,-10,108,44,-34,-70,-145,-51,49,-106,-42,97,24,-70,-17,80,93,53,57,-156,22,-36,5,34,82,-83,-101,-93,76,-29,-80,77,103,1,109,89,83,-55,10,22,-27,7,-18,-47,105,92,61,-114,30,61,4,-14,20,-108,5,-126,115,-84,27,12,-22,-42,-33,-116,-45,13,111,-10,42,45,66,68,40,65,-81,51,-91,-28,-53,58,49,-59,11,-87,-60,-65,34,82,-55,-80,23,-130,-156,-33,63,-82,-1,38,-38,-17,166,106,61,62,75,62,66,-27,129,8,74,8,-120,2,38,97,12,2,-3,-8,54,12,13,29,53,18,-119,59,61,-105,37,-104,-39,-46,-72,-104,-70,37,21,-67,-45,-84,-7,27,78,40,-84,-49,-97,-55,117,135,114,36,57,86,-68,51,-30,101,-9,-63,-28,-45,66,112,-55,-10,-88,33,6,68,2,-93,-87,-36,-19,-44,32,-62,-87,-31,-11,-48,-84,6,87,-78,-28,1,37,108,66,-53,-92,-55,-5,99,-105,-27,-97,-8,19,1,-103,25,-100,24,40,1,22,-51,61,62,-43,-0,-31,31,38,-26,-34,-67,19,78,81,35},\
+{52,111,-40,-112,65,-81,-89,26,-63,50,-72,-27,41,-1,-103,34,-58,-6,40,-86,-84,-32,-45,36,-149,34,67,20,3,74,-5,-56,-44,-55,27,65,85,-98,-15,106,10,27,98,85,-87,-72,-31,0,93,-82,-16,-9,137,-27,-19,47,-3,-38,87,14,-19,-85,-31,45,33,-102,-65,-26,-122,-55,-67,51,-89,72,1,26,47,-55,-45,8,-13,-65,-32,-79,-98,39,-5,-84,54,-27,52,27,-10,-39,38,97,58,87,-13,48,-84,-12,95,26,87,32,48,82,-23,-77,117,131,24,-56,80,-41,-58,-155,21,69,-35,-12,-59,-34,26,-13,90,72,51,22,102,-20,-59,-30,-16,106,-21,66,-109,78,-106,217,35,-129,22,11,-69,-94,-125,57,-83,32,-93,20,-58,-139,-66,48,43,34,44,-44,20,-21,-80,41,58,-34,-200,60,-31,16,-94,33,-136,-136,-90,-45,38,59,-73,38,-51,64,-43,-73,26,-91,-158,20,33,-42,-7,-114,-175,46,-71,61,-129,67,-102,22,57,59,-100,47,-51,13,10,76,-17,-46,-50,-20,16,66,32,105,90,47,-61,54,83,-43,-13,74,-84,-121,69,-45,-80,-82,24,10,-44,-76,-163,-36,14,82,-67,54,96,33,60,25,-41,100,-113,-69,51,-21,46,-37,-47,81,93,-63,57,41,22,58,-33,-102,-29,44,-90,-64,-68,-51,-104,70,-85,-9,53,-58,52,45,151,-40,40,-23,-36,-17,118,137,-96,44,-41,78,40,-33,36,-25,-78,-9,-59,-89,-50,1,57,49,27,-38,-28,-82,-80,5,-91,-41,-42,-49,-57,40,60,-43,55,76,34,56,36,55,87,-14,7,51,121,104,54,-60,95,69,-18,-60,69,-134,130,-79,-26,-32,-9,-104,1,-28,-93,36,-131,59,-40,-23,24,-72,-32,8,-174,-150,-151,-21,-1,-124,-65,91,-35,65,134,33,26,-54,-54,-29,35,6,-106,77,-41,-77,121,-104,40,64,54,-78,14,8,38,90,-14,-43,-17,88,-18,47,193,80,37,19,-73,16,-18,-26,19,-19,-35,35,-63,-45,3,36,75,85,-158,-121,-103,-48,84,-3,1,46,47,59,69,47,9,21,-21,-94,-101,125,25,-15,48,51,57,-45,-50,-33,-15,-46,11,-60,-43,-82,-56,13,18,14,65,-48,-12,-20,18,34,58,-14,135,38,-64,55,-28,-85,72,102,-194,-64,98,218,37,41,-26,-50,-36,-54,-100,-24,30,-6,-55,12,25,-55,-67,9,8,101,-57,74,44,32,90,35,-11,36,-65,39,73,50,-36,-50,66,-117,-36,114,20,-122,87,-68,37,-45,-59,73,-82,68,-33,-110,5,63,-95,38,-99,-63,-109,8,-67,82,-63,-59,-3,7,15,44,8,-30,76,42,70,-47,-68,45,-29,-0,1,-107,-12,46,49,-44,37,-86,50,79,-146,-67,-113,-100,16,-24,20,69,19,73,20,35,55,18,31,93,-4,16,-16,76,-23,33,75,158,50,-139},\
+{-139,-117,-69,26,-57,24,-8,-88,-87,26,4,-107,14,44,-56,-132,-50,-34,-14,-40,-44,38,-10,65,19,63,-37,-39,100,-55,-9,11,70,-86,-45,-44,-127,-140,61,-2,-68,-206,-129,48,-62,-13,5,-93,21,88,73,5,63,-6,-52,138,168,-81,128,51,-66,7,59,27,-27,-55,14,-14,-16,-16,-34,104,-23,-33,-50,-72,-51,59,12,15,98,81,-55,-46,-26,-2,60,55,48,-98,-35,-13,-75,-57,-12,76,-102,74,-57,56,-36,-55,79,7,-27,-68,66,-11,-15,-141,27,-61,-82,-36,11,-37,6,87,-53,-31,15,142,32,45,-33,53,-6,-19,-17,100,-8,-45,27,26,-77,160,-13,-26,-69,-124,-36,-1,32,-56,-66,-7,22,24,-85,-95,-95,55,25,-127,55,-19,-55,91,34,-123,1,0,83,-66,-139,81,81,-9,50,49,89,-4,-11,18,78,39,-5,4,-34,-22,-69,111,35,-42,35,-94,-58,-7,57,75,47,-38,0,74,79,-21,-30,54,136,-90,-70,42,-24,65,128,-7,45,15,69,-38,-73,-19,-58,43,-35,1,-296,-69,99,-41,-132,38,-120,-65,-21,-109,57,-123,35,95,11,-90,21,63,102,3,-181,96,-96,5,38,48,69,97,76,2,19,5,13,-91,63,50,-155,-81,-64,-6,26,-21,-105,-71,-34,-26,33,-44,-1,18,-52,56,-13,-12,133,-51,-64,-18,39,-109,70,-105,37,40,-56,-61,-3,37,-75,18,22,50,-80,-75,-0,94,3,34,13,69,85,-28,-44,-2,-40,-28,-81,53,30,-86,-67,-30,-21,-7,35,92,-33,-22,49,-50,13,-63,84,-85,41,56,43,16,-106,-198,-144,35,1,-200,-143,-132,39,-10,4,-135,-144,2,33,-24,-33,-100,15,79,-34,31,-12,-62,-89,-28,68,87,70,-28,108,-18,-108,-16,-138,-21,47,32,-68,38,-27,19,93,-6,14,148,123,29,28,14,76,78,20,170,-160,98,106,125,-154,88,71,36,-50,34,-25,-17,56,45,25,38,7,-114,71,72,13,81,45,23,47,-78,128,-31,-6,77,-31,-66,-36,6,21,61,5,40,-49,114,-85,105,-28,-35,67,92,-0,-69,-43,5,15,-8,-25,47,42,40,-23,-22,-3,-28,32,58,52,61,60,78,-136,99,62,67,-68,39,-185,41,130,-30,-13,86,8,-35,22,147,139,-69,75,18,48,-1,-165,-91,-42,-80,-14,-8,37,44,-121,-92,-20,68,13,29,-23,-78,-1,24,23,28,-12,-72,159,18,-98,-81,5,-50,-19,-9,61,115,-5,17,-43,-95,-86,99,-17,71,-57,82,16,-13,28,-43,-21,54,36,136,36,38,97,67,56,31,-103,93,76,13,2,62,-13,-67,-41,35,80,8,69,-73,-62,-33,27,76,36,-161,4,-108,23,-58,20,-79,6,12,10,-70,-68,-86,154,73,-10,-32,-177,-43,105,17,-40,-36,-76,64,10,-41,44,1,-65,93,-28,-17,-44,-100},\
+{-67,-52,3,-86,32,55,91,-60,-19,23,-65,43,-25,-22,70,52,-66,-36,-7,-44,-22,46,42,82,-89,-10,25,-26,32,43,-93,-19,-60,35,-89,61,39,-51,2,-47,-22,8,-1,-102,-85,-23,-17,-14,84,-89,16,-44,54,25,59,-47,-69,-38,-81,-43,71,-56,20,-66,-39,-90,-83,-53,64,64,-70,77,12,34,-8,-20,96,-57,11,-44,15,73,-77,-36,-45,56,33,35,-27,-73,-54,-68,-40,-66,-0,30,-24,-52,74,10,-43,-56,79,-27,-16,-63,49,-53,-13,-59,-41,-50,-56,-10,7,1,-7,73,60,-62,-14,62,25,78,-50,82,-81,103,-77,39,-91,-57,-36,-41,-95,-31,11,-92,58,32,-27,61,-96,89,-62,-29,-68,15,-3,-66,-42,-70,-66,-86,61,-41,27,-47,55,64,82,1,-37,33,-19,-4,74,-21,19,87,23,53,34,27,-43,-70,91,-79,-43,5,-21,-13,-19,-48,13,-8,0,-56,58,47,-71,73,81,54,-51,25,41,77,-33,2,-34,-94,59,-82,-26,-23,12,16,-3,3,43,0,66,-57,-44,72,-94,-3,-67,10,9,-35,-60,-71,65,-22,-24,-11,-95,-30,74,41,59,52,13,-3,54,35,-102,24,-30,46,21,-36,-53,-51,-83,-23,-7,75,-24,-77,-44,47,-79,-86,-75,-62,-2,-9,68,24,-52,41,58,-30,22,-36,-12,-30,81,87,-47,-38,55,-56,-77,-8,10,-35,-68,-6,-28,-3,42,12,-96,-76,78,-23,-69,-37,80,-17,-44,62,60,53,-94,86,37,88,-92,13,-72,-25,-76,78,-46,57,-43,31,-47,21,-64,-9,-50,-94,-69,4,45,27,-9,-31,22,71,-69,3,48,-67,37,-58,-11,53,64,-12,-38,24,-40,89,13,12,-4,-12,66,49,-44,-31,-11,-78,-90,-70,-50,50,3,-33,69,-9,16,73,40,43,41,-34,-22,91,37,42,36,-21,67,-93,6,-34,-32,-5,-2,-17,102,27,-51,14,37,65,26,-57,-51,-79,19,-54,-1,-6,37,40,-8,-34,34,-96,-56,-75,-62,9,-92,19,69,-22,-86,-36,47,42,-0,42,50,-42,-78,-81,21,-67,-19,-66,12,-80,4,-27,-73,84,8,-18,-46,51,-69,-0,-65,60,12,-86,72,66,-83,15,-47,-16,-51,29,-90,-18,-44,-66,47,40,-52,-55,57,81,-23,37,29,-70,-8,21,-7,-51,89,75,-79,46,-82,91,75,-89,28,19,-30,-83,-35,-35,-87,7,47,69,75,13,39,-50,-71,-27,47,61,54,-74,-80,41,-92,47,-92,29,-67,-96,-40,29,32,-40,3,-70,-38,76,-82,37,78,-28,6,88,75,69,20,-65,23,37,-14,59,-19,-38,-11,-36,-55,-65,-92,-66,-19,52,51,68,38,-86,90,72,-14,-8,69,3,88,10,70,-78,-22,-57,-86,-57,73,-96,-95,-21,88,12,40,62,-45,-44,73,91,44,-36,-23,39,46,-27,19,-39,-9,-84,-30,-71,-41,5,-37,36},\
+{-62,67,-49,7,-34,52,75,-30,75,-83,79,64,50,-45,-63,-53,0,-95,70,-27,-65,-35,-14,87,17,-94,-69,26,82,-45,-14,-100,-82,-40,-86,90,5,62,-30,13,-57,-74,-6,-40,-70,-120,-112,-14,31,-4,-108,-90,0,48,-5,17,52,-83,-77,109,75,-17,47,65,-0,-92,-8,-1,8,-3,-49,-94,-5,49,-46,-74,19,23,25,9,10,-29,-77,82,44,76,-56,-59,-67,-44,56,-6,43,-4,49,53,-12,-65,-55,-56,-60,-45,-75,-5,-10,-25,-98,61,66,72,15,-72,7,65,27,43,-103,57,59,76,36,48,68,5,-77,14,-81,50,-34,-49,-3,67,-71,-135,39,-73,-79,69,-104,-16,-5,-82,-48,14,80,58,-15,48,-93,5,23,-58,-29,7,-46,76,65,-19,-110,-12,85,86,-25,12,8,-98,-1,75,2,2,7,-22,75,49,-81,-58,-48,-62,-70,-20,-55,33,-43,-22,47,3,-7,57,63,-49,80,31,3,-71,-28,-32,-86,-94,42,47,29,91,11,-74,76,-21,45,56,82,-42,-4,85,88,-53,-44,-42,109,-53,-94,-9,83,30,-44,-45,73,-101,68,60,59,-124,-123,-119,-97,-70,0,-84,-79,76,-21,-23,-24,-65,-85,-96,29,38,10,-35,39,-62,82,-43,16,-87,17,-21,76,82,-36,-91,44,-93,-5,10,-1,-23,-64,21,-21,53,-7,-41,42,107,63,-53,2,32,22,-68,27,28,-50,45,-18,24,87,51,-14,93,79,33,-83,53,-90,-88,3,90,50,-54,68,33,-1,0,10,-1,11,-68,-78,-21,-79,63,-40,86,6,46,60,42,-90,11,-87,44,58,14,-42,-6,-10,-52,-6,-109,94,12,-59,3,26,5,68,72,89,-66,22,-96,-2,-79,38,44,-68,-86,-62,-39,24,3,55,61,-11,-53,-23,-38,43,42,66,48,62,63,-43,-78,24,9,-95,-14,-8,-22,-55,-91,29,74,81,-14,-26,-57,83,77,88,56,-75,24,-36,84,80,-57,0,-95,-28,103,-46,-14,109,-38,-36,41,-27,-54,81,55,21,-61,-69,50,-32,-88,107,56,47,-39,95,-49,-17,22,-14,63,-99,42,-69,5,71,-12,-71,-85,107,-32,6,-93,-75,62,94,104,96,50,18,60,71,60,59,66,-15,96,73,105,27,35,-36,-3,109,134,-55,-67,100,4,-0,78,99,-35,8,41,-2,89,76,-43,63,-52,9,-31,12,-8,-44,81,-49,38,62,27,58,-92,47,-37,16,22,-8,21,24,3,61,-39,95,73,93,-63,97,-89,15,-8,-75,-90,-35,-40,72,-11,90,89,-51,55,88,-83,-81,-17,-27,-89,-79,-32,5,-18,-52,-57,54,46,-56,-77,-33,69,-8,29,12,98,-53,22,-23,-64,-68,-89,69,-15,-25,-45,20,64,-10,69,16,70,24,-40,45,106,33,66,-69,78,-10,-69,136,19,-27,8,21,40,-33,-0,76,86,-7,-85,-57,-15,37,-20,15,-77},\
+{-37,113,-66,15,-29,-2,-80,-25,-59,20,77,11,-96,-43,-78,24,-52,69,-63,57,50,39,-61,55,43,-47,-92,-29,-98,-60,-44,-36,-71,39,-32,-43,-46,-66,0,-20,109,-122,-5,-84,53,-38,92,-104,-87,-65,-14,-81,22,-61,-60,-28,-42,50,-6,-64,46,-87,129,-39,-70,-56,77,-146,175,15,31,-17,89,10,52,42,27,-39,-74,-55,-13,-89,23,-80,80,-55,42,54,112,-7,-44,-27,-69,89,21,23,-35,57,-88,-64,63,-82,41,-34,-31,-21,-3,40,-64,-6,7,-94,112,64,29,117,-75,43,-49,10,-95,34,1,120,-6,-81,5,52,-90,98,-35,-80,-37,-36,10,15,2,-8,-32,-36,-33,103,-105,90,56,-74,-84,-37,12,56,-107,-104,66,-14,47,-5,-92,-60,14,74,-30,77,-67,-15,22,49,-83,-41,-98,-69,13,42,4,5,31,-104,75,29,-7,56,28,-81,-3,-100,-10,27,-108,64,-81,36,-65,42,-58,-15,52,69,-87,11,-82,-24,-58,-16,76,-25,-117,-73,95,42,85,-15,-79,104,115,-20,31,2,-88,109,45,-13,44,-19,22,-47,-100,-88,-83,46,-73,-44,-28,28,42,-29,-1,10,56,-26,-24,-71,-114,21,1,-21,66,-44,-149,69,-66,31,-33,-46,57,21,-31,-0,60,70,-109,97,27,33,66,-62,-4,-28,-28,10,61,71,-22,80,6,64,-86,-37,21,1,-89,74,-1,42,35,-72,12,84,24,-72,25,92,-38,-30,-57,7,69,-49,11,19,-86,14,18,-33,-55,18,35,29,0,-58,-23,-82,35,-48,-79,69,95,-38,-21,9,-44,-93,-77,-13,-49,-42,14,-11,99,35,89,-104,12,-108,55,21,-39,-114,-106,-115,-27,-6,56,20,-32,-14,-62,-59,-16,-85,53,-142,59,-20,-86,-91,19,30,79,-35,39,-57,-15,-109,81,-79,26,-20,51,-42,-36,20,-2,-67,-2,64,5,-6,61,-61,-36,16,46,98,-49,52,-92,-37,-16,-47,18,-56,-3,107,-63,26,-3,5,-71,-72,43,-82,-82,-87,-96,-76,82,32,44,69,-38,-37,68,-65,-38,-39,-11,-125,27,2,46,-91,38,-63,51,75,30,5,92,-12,-29,33,71,20,52,-54,115,113,-1,69,-97,-27,56,-45,16,20,-90,-21,54,67,-26,-79,-15,-17,-100,-103,-109,-71,23,-23,-51,-29,-74,46,-46,-80,16,-127,14,11,64,22,-65,75,-33,-78,-62,80,54,94,-69,99,-105,30,65,38,-60,9,50,10,25,123,49,77,-54,-83,-75,21,78,40,-130,-49,88,80,-27,69,93,15,-91,-32,-16,-78,-25,-65,-52,-83,57,-50,88,52,-34,-50,-51,-2,-64,-42,-43,-71,-32,-78,-63,26,6,-5,25,-2,-67,-46,14,-54,88,-36,38,-30,-32,-5,26,40,-42,-97,-19,-28,69,45,-55,-34,-33,91,-78,38,-81,43,42,53,56,-110,-92,52,75,100,116,33,-73,53,-99,16,-51,-75},\
+{-109,62,-125,-73,-21,-9,23,105,-50,-6,-89,53,-25,115,49,1,10,-19,51,-1,-38,71,77,6,52,-73,103,-49,107,-34,-8,69,-28,-50,102,68,-99,45,-18,5,71,-142,-109,61,57,27,-17,43,68,75,75,-22,-38,-89,55,-69,-11,-26,-93,66,24,105,27,63,58,91,19,71,-66,-61,45,103,40,70,15,-38,-13,49,-37,-99,35,45,-34,98,17,20,-2,71,10,-57,-50,81,25,-94,-52,5,63,-21,-21,-72,-49,29,-47,-3,69,-9,8,-73,-20,-22,6,42,91,-92,25,54,-90,-96,-37,98,-49,-45,97,76,-76,-57,42,22,-17,63,46,52,38,-61,-63,8,46,-5,101,15,-75,-30,-33,38,-130,-59,-95,-91,-152,20,78,112,100,-21,81,33,57,1,12,23,16,58,54,-11,-54,-50,59,57,-47,-39,-51,77,44,61,70,70,148,144,53,-40,-4,91,-46,-6,93,-18,52,56,-36,118,3,14,68,-15,-109,12,-85,-47,44,-61,-99,80,21,-64,-57,74,6,35,4,-92,2,76,-18,33,67,-15,-141,-94,-104,-105,-85,-56,-13,141,44,-76,35,-7,-15,-82,-73,31,-6,47,101,-8,10,74,72,-36,2,111,88,42,-25,-57,118,77,34,-70,121,104,-17,29,10,-57,88,78,-60,-82,-34,10,-106,-6,-48,84,-76,-31,47,72,47,-10,42,51,67,-63,-69,-59,84,-18,134,18,-3,-9,-100,-95,-107,93,-68,-68,90,51,66,-60,28,76,-86,-54,36,-57,71,-27,-21,-16,78,17,10,-37,66,67,61,-59,84,-83,-87,48,22,-64,-35,32,83,47,63,31,-8,-78,-17,-70,-193,-38,-20,77,129,83,39,-15,-21,-0,8,-73,-73,67,-53,53,72,-65,-40,44,-10,-49,109,33,40,49,112,143,63,45,61,52,-51,37,28,86,109,30,-35,78,-14,-12,-12,53,-8,31,-69,35,67,108,-35,-56,-82,-60,-108,43,-37,-6,-10,-68,-52,-51,-25,-42,-64,11,-96,-22,-92,-63,-54,25,-38,39,-78,-8,-27,-50,-21,-30,-26,4,-41,91,-75,-19,-62,11,65,-7,13,-89,50,-18,-24,-51,-48,17,-74,-51,22,-90,-104,119,9,28,-12,-32,87,4,-113,-54,15,58,56,59,-142,-80,70,77,60,-82,30,24,-61,20,1,58,-61,-19,42,-106,-29,-2,-23,-79,-36,-91,22,87,-21,91,-69,-85,-42,-92,-74,-42,13,71,8,-35,50,72,75,110,-10,-54,-86,30,-56,37,-17,-107,-72,-67,22,15,-72,49,-37,20,-2,27,31,-124,86,-58,-33,100,75,17,-46,-33,44,-32,14,140,-80,27,91,93,-88,-32,-9,-90,-22,74,-55,-100,-64,8,85,7,-3,-48,-17,18,38,-21,-11,-81,-108,-28,-103,157,-41,9,36,60,-22,-4,12,-28,-59,-59,130,3,-65,-66,-28,-27,4,1,40,-62,71,-60,-0,17,-11,11,-125,-132,-72,55,4,64},\
+{-92,-19,-51,-130,-58,-53,-84,38,44,-100,72,113,2,70,53,-19,-5,-36,-47,-49,130,84,-38,-47,-28,10,6,-69,-19,21,139,23,93,-28,53,-50,-84,52,46,-83,-93,-61,-87,44,73,-130,-1,-272,111,-123,33,16,58,-108,88,70,53,-5,82,-48,148,5,-1,-37,119,-35,57,60,32,-63,-10,88,59,32,-31,31,30,-137,17,72,-36,-82,-3,12,-63,-27,-63,-62,-66,-24,16,-76,45,28,-83,-79,21,72,3,-45,-39,-75,-94,-73,-30,-13,64,-33,-111,46,44,80,129,-23,-109,115,-38,-34,94,-93,-124,-16,116,-38,60,-15,144,-71,-40,-20,-89,73,69,-7,-40,-157,87,-13,131,-130,84,-220,82,-50,30,-41,-7,-7,20,156,24,23,-74,-42,90,124,107,-84,-5,-7,-28,40,-40,41,29,-44,7,-43,-113,-29,169,158,96,24,19,40,105,68,-82,137,2,49,-28,-45,19,-9,-67,16,56,25,-72,58,86,-117,-76,-15,-81,-94,-93,79,-20,-65,-52,28,-21,-4,68,-124,-82,64,-25,47,20,-2,-89,40,-70,-60,-55,-217,-162,56,-59,185,-100,-73,3,166,70,-25,-68,-64,-138,69,25,70,78,23,-26,75,28,-21,74,127,-89,-112,101,-37,46,80,2,113,-34,-165,-40,-12,-66,26,-84,-45,70,-79,-31,113,-83,1,84,29,-6,17,78,12,39,29,-38,-22,-20,-45,24,-158,78,-71,-22,-78,-51,3,116,77,-86,-14,-25,-12,57,-39,-58,-22,83,-63,86,-80,-45,-101,95,21,-74,18,85,19,6,-84,74,-43,-91,77,21,23,-85,60,-98,-86,18,71,35,-43,-45,-117,-153,-119,-152,-14,16,-43,-13,-65,-183,47,10,-66,12,-44,23,-48,-45,53,9,49,-50,27,146,32,-1,53,1,32,168,9,10,162,103,145,-0,-39,16,-52,-37,58,100,55,-45,140,-66,-16,87,74,5,96,-61,53,-9,-1,-20,-105,-126,96,69,26,-85,5,22,6,-0,-61,-91,-62,52,41,97,-79,100,83,-15,-77,-43,34,-76,-64,-7,-9,109,82,42,84,-15,68,113,-84,-62,31,-40,130,98,-38,-13,23,-11,104,174,34,-42,-49,54,38,34,85,-81,-91,35,137,-122,-10,32,-24,21,52,-31,108,-12,56,33,-24,-38,30,1,47,-70,6,-17,-39,-76,72,29,-151,132,82,163,14,35,163,36,2,72,-81,28,-47,4,-12,50,71,-78,-62,13,33,71,-3,-70,72,-51,-85,69,-22,-46,-1,-24,-73,-108,11,110,-25,-73,-46,-16,-17,52,-86,-17,-19,-129,-40,105,-157,-4,-108,-80,-8,-55,-70,-48,-82,-26,-100,80,67,-57,-36,42,26,-43,-77,71,-34,-90,48,42,-92,39,-36,46,26,32,-58,102,-123,-10,67,-13,96,-1,32,33,105,129,-11,83,97,-77,-38,18,106,-16,-56,-63,-120,8,54,13,-101,-87,-17,79,-74,34,-7,106,-73,146,-23},\
+{71,22,11,-39,-16,86,71,24,57,22,18,-69,68,25,-89,-24,25,-49,-5,-83,-35,-64,80,45,41,-84,-45,54,-15,-92,2,-85,-16,23,-22,1,-83,-57,25,-17,-52,-6,82,-61,-40,-72,-49,-47,-57,-93,32,42,-57,-25,81,62,-20,-0,40,59,20,-17,79,-46,-2,67,-93,-39,-33,-32,19,72,-20,32,39,64,34,-16,51,-67,-48,36,20,-79,-44,-3,56,-86,-31,28,1,-77,28,75,-42,57,-17,-11,63,19,-95,-29,-82,15,-22,-8,25,70,-50,-26,90,-64,-76,-3,-77,31,-28,59,-66,19,-63,-49,-75,-46,-18,92,-9,80,91,55,-56,52,-93,-40,-36,81,42,30,70,6,-15,76,-28,-64,-9,-97,54,-88,-17,62,-12,-31,-93,9,-38,8,-48,-7,11,41,-94,-77,7,35,-8,81,-57,-92,42,42,-21,-18,39,-51,52,17,62,21,-19,53,41,-11,-9,77,13,86,81,88,-90,11,87,56,-99,-55,-31,-46,33,-90,59,3,78,47,63,50,67,24,-8,-28,-35,46,59,-20,2,3,38,81,-26,-17,67,29,58,-82,-79,54,-7,-64,-66,26,65,37,-54,-94,19,-92,-29,24,-54,5,-73,-46,-20,75,79,-86,-11,-8,-64,-47,-30,-36,-65,-36,32,-2,-23,-6,-79,-2,-0,76,-74,-70,51,-79,46,6,6,20,-62,55,15,13,87,-71,23,44,-83,-12,64,-77,-94,-56,-27,-88,-93,1,49,-86,27,-50,-16,5,-55,40,7,-57,31,-35,24,55,-18,7,-42,-90,-25,-94,64,-6,83,-91,22,12,36,43,22,0,21,-56,-63,33,-95,-90,85,-7,-10,54,-31,-81,1,-98,-7,-5,-36,-102,-73,54,73,-3,-61,-3,-43,-74,-42,53,18,51,-12,-91,-75,47,-5,78,-103,-88,28,66,-18,-95,15,-73,45,-61,-92,-23,-55,42,-20,-52,-31,-85,-3,56,-51,-7,51,-32,-66,30,-78,18,10,-94,-13,-34,-58,-3,51,-24,-17,-45,53,86,-27,88,-53,-62,14,-38,-75,11,-23,60,-30,64,41,10,-47,6,-59,56,-8,79,18,75,96,-38,20,-61,-26,74,-54,-43,3,-85,50,54,70,66,48,-17,-58,44,-23,-13,-54,-12,6,75,-1,-76,63,-83,-24,28,33,36,78,29,60,-14,-68,-45,-59,-44,33,-91,-50,-75,-29,-5,-4,88,-4,85,35,-23,61,87,-82,3,-15,78,-17,8,50,-2,50,-3,-2,81,-90,72,82,-13,73,-46,10,-36,51,-94,-11,-56,-60,-51,-51,-6,22,9,-53,59,-89,-24,71,-73,-46,26,-74,65,33,-85,63,-33,76,57,3,83,33,65,35,3,17,-73,41,-72,47,-85,-88,72,35,2,91,-83,-20,36,15,27,-83,21,-57,52,-21,21,10,-53,78,22,45,-26,26,41,-8,-90,65,44,-67,-55,-6,-15,-51,77,-74,2,-33,-57,-86,-2,-10,-44,-73,34,97,2,9,66,7,91},\
+{-89,-2,58,-57,-16,37,-34,58,21,-111,-89,-110,-105,23,64,-65,25,-63,12,22,-81,30,-30,-3,-17,98,-16,23,3,-67,70,-13,54,40,71,102,-73,-197,-130,251,8,-60,-46,-112,-53,161,-132,-13,1,76,102,172,-45,-30,-53,-83,-159,-5,-70,108,50,-33,4,-7,-20,54,97,-52,-12,-193,89,80,39,-65,62,90,-9,-2,28,-19,-75,85,15,38,-16,-65,94,29,34,44,-65,90,-38,20,11,-82,-1,82,69,-96,-17,-87,81,84,9,-89,-48,37,-84,-84,255,110,-3,-5,107,-86,116,-69,-119,85,35,-57,55,-23,-58,38,-68,39,-20,-154,-77,100,-3,34,-56,-184,14,61,-54,-41,57,-53,113,94,-71,157,104,-143,-210,42,27,-72,-38,-175,-126,-21,-116,32,124,18,63,103,72,-25,-109,-40,142,-11,31,8,-73,-2,65,4,79,-81,38,-106,71,77,-46,129,-25,-63,-38,-50,94,-15,2,35,-52,-3,9,104,2,-3,-14,87,-8,-42,10,-94,-11,-16,9,0,43,-54,87,25,-153,4,-10,52,-15,30,-277,55,229,-61,-93,-83,105,5,-9,-69,-153,-17,-33,-192,203,-73,80,37,2,80,24,-122,160,65,-15,56,-26,-54,-46,-63,-62,-2,-71,17,20,-27,-101,-7,138,48,-114,3,102,-6,29,73,-43,1,-107,36,-15,-55,-24,-85,13,21,7,-38,-72,-62,-53,64,-45,5,-77,-11,-62,-27,-33,-76,77,52,13,-75,-53,-89,47,72,-52,20,-22,76,12,-46,41,49,-38,7,-0,12,31,73,15,6,34,-20,-21,-55,-30,-23,-47,-5,49,55,-88,5,16,5,30,-86,-105,75,109,-237,-52,-66,21,50,24,23,-39,-24,19,20,-129,-24,-62,33,-110,70,-60,-23,58,-33,-59,-96,-76,-16,50,14,35,-94,-5,106,16,65,-43,13,-37,-80,-3,189,-23,101,46,-39,-135,89,-47,60,-5,-160,55,77,25,-135,-57,38,-26,122,7,-117,108,-135,63,82,-49,-55,-85,18,53,135,183,-120,-17,155,-0,124,-92,107,90,-39,43,-15,-84,32,0,6,-3,-66,45,-139,-53,-27,-9,-11,-100,-120,-23,35,52,71,140,46,117,70,6,93,-55,39,5,-35,-20,189,36,57,132,37,12,90,108,56,-70,-220,-8,-58,-32,-30,-39,-42,21,71,-13,82,-37,-65,29,104,51,10,-32,-81,-108,61,36,19,9,-105,92,23,-26,174,120,37,61,-79,-21,-36,17,-99,12,-9,13,-18,55,5,-12,-86,-41,20,-16,-76,-74,16,-43,-12,62,-43,1,82,-36,117,-64,64,27,53,29,17,1,-88,2,-90,-27,-71,89,-32,-77,29,-22,-16,12,-57,-87,-93,43,18,48,-44,49,23,3,-74,-40,23,-121,90,48,55,-3,7,-65,70,130,152,-50,-91,73,-139,13,32,24,-40,43,-16,52,-14,67,-48,-10,42,-4,-57,8,-34,-68,10,26,25,60,-96},\
+{-4,68,63,19,-92,-4,-28,-89,5,102,-54,30,-30,33,127,49,43,-21,-49,65,26,-82,-97,64,-110,42,-54,4,-114,-76,-115,-59,-24,-38,-28,-117,76,42,37,-58,-127,-34,91,38,-0,-9,16,-49,-101,-19,30,-23,-62,-19,-23,110,90,-80,-101,-61,-214,23,103,-6,-25,101,-31,63,83,-28,40,173,64,69,-21,-85,7,47,11,-15,-21,91,9,-41,67,-67,17,45,-2,-41,-71,-35,49,1,-97,39,-52,-29,-38,-83,-68,95,-87,-75,-32,-27,-80,69,65,40,-0,-137,-46,19,-119,-45,-144,142,-53,51,-24,8,76,17,11,76,-91,86,128,39,9,-117,17,41,-14,48,133,53,2,-19,-83,-119,64,8,105,-14,-29,-43,-23,12,67,19,-16,44,12,58,-77,-66,31,-97,-115,-135,-57,-73,-23,60,-125,84,-64,24,-10,40,-8,38,33,-18,26,-19,-51,-99,-79,-40,-63,-35,-38,-40,-140,64,72,2,-5,-13,-48,32,-22,-10,21,13,-139,-7,25,42,-107,30,95,35,-33,81,63,74,72,7,-51,-100,-75,-68,64,49,79,61,46,-52,0,-41,65,-16,-35,30,-36,-95,-14,13,-92,-64,-157,-55,-38,32,33,-88,-52,63,43,-28,-128,53,176,-7,75,75,82,10,62,-26,123,41,3,81,-128,21,-58,64,47,-11,-132,-25,15,-73,-43,54,-28,13,105,-87,-14,-45,-53,22,35,39,-8,24,127,-73,80,-10,101,-4,-3,-50,-66,23,-51,-14,88,38,62,-53,76,-8,-26,-85,52,33,-66,37,-17,-40,-59,18,1,-8,92,-87,-38,53,2,-5,10,61,45,21,-60,-6,88,-47,108,18,44,62,112,-46,-28,32,64,62,-32,18,44,-52,32,68,-5,-98,9,-19,4,-120,-141,-58,-21,-49,-26,-134,-178,26,80,-59,-60,-89,20,-146,25,37,-73,34,24,28,-43,91,-64,23,74,-75,46,2,-7,81,74,28,-62,53,70,18,96,-70,14,86,67,-110,0,25,87,87,-87,-54,36,97,103,-35,25,45,-4,-92,103,-29,66,-81,-10,12,-10,73,-18,-76,53,-87,-0,22,-38,88,-102,46,-34,123,36,81,5,31,53,106,-9,-79,47,-23,89,65,-129,8,-97,-116,-20,-147,-36,3,81,60,16,9,-41,77,196,-38,-104,56,-76,171,-156,-94,59,75,-43,-118,-29,61,44,2,30,-124,-50,63,-43,43,132,61,21,-74,3,-65,-90,15,-125,29,17,14,-33,10,-73,48,-52,-7,-105,-25,35,45,94,2,32,-74,82,-109,129,53,27,2,-59,31,47,68,24,19,-6,43,-101,-16,-31,-90,16,-14,-6,-30,-49,-58,57,-36,-15,-25,-39,-22,52,-45,74,-15,-1,123,16,25,-22,51,18,60,-29,-60,102,44,5,16,-59,106,16,-58,-94,-9,47,134,8,-84,10,52,51,35,-64,-32,90,22,-64,34,85,97,121,-92,14,-62,-5,1,46,-23},\
+{-68,119,-19,-94,-33,20,-127,63,-26,43,12,-65,-86,52,90,41,-89,34,-76,58,45,-57,6,38,-26,82,-25,38,51,-71,27,-4,88,-68,-97,-71,-42,-195,-47,218,-11,-18,-65,-75,-111,76,-182,72,-11,-35,71,56,-36,91,24,-45,33,12,25,154,-144,29,-87,-42,-75,57,71,-119,-5,13,5,66,-67,65,-24,-44,-59,55,95,34,5,52,71,-33,21,26,8,-104,-91,97,-94,63,-80,34,-8,-37,-72,9,-41,35,21,95,25,-83,96,86,77,-19,58,-152,239,-28,-66,-76,-1,-7,-69,-67,-91,-78,91,2,68,-64,73,-87,26,-7,73,-114,92,45,-0,-109,43,-106,-37,43,22,33,-124,-65,-104,-9,-121,117,-41,-50,-80,39,20,-12,-41,-54,-157,56,-55,90,32,-2,-3,166,-127,39,30,78,-13,85,73,10,-22,-39,-74,40,109,26,149,125,-35,34,-33,21,-73,-98,86,11,-15,11,-4,69,-92,19,8,35,58,-1,-82,102,-103,43,65,0,24,-1,19,-40,-40,98,20,-45,4,-44,-23,-28,102,39,-242,115,120,-109,-107,97,-92,122,74,22,-152,8,-13,-34,112,-59,-88,130,-49,-86,-102,81,-10,45,-48,16,39,57,29,65,28,65,-95,-2,4,10,-50,-88,147,-77,-108,123,141,-16,-117,80,78,-56,-25,-60,-74,-41,-7,-37,-6,27,-43,0,45,26,51,12,-29,-71,-6,3,4,-31,-158,-44,-18,116,52,25,98,-45,15,6,46,11,-85,76,39,-14,7,74,-45,-37,-70,-81,-61,3,-91,77,-16,25,-82,33,31,-68,-34,11,43,44,-59,-42,-97,-20,76,-41,-61,-120,-22,-65,-65,-45,133,173,99,-39,-141,-8,14,-37,-114,-8,-37,46,-62,-16,-83,-58,-114,-15,12,-52,-18,44,-45,-62,40,79,-40,70,93,22,-124,15,30,1,-21,65,-101,-158,-85,-9,89,-39,-27,-115,134,85,24,30,-25,-113,100,46,1,82,-30,-89,83,-47,-26,35,77,-4,18,-47,-99,86,92,68,86,-54,-9,33,12,-73,65,-67,68,-83,-24,-146,-64,-69,50,-81,-37,-63,-13,77,123,-39,-11,-98,93,51,24,-75,-94,-35,128,-39,-41,21,-113,-96,28,-65,85,-55,72,140,-33,-99,18,27,-39,49,-64,64,27,27,-15,-22,38,39,-45,42,-38,-22,169,97,-2,-92,171,60,-10,42,-67,39,-141,-50,-50,-6,69,69,16,99,-58,-31,37,-48,-6,-79,-4,43,-79,-23,-65,-47,129,78,-67,47,35,-65,110,97,8,13,-70,12,3,-25,-61,80,35,6,-27,-28,30,-56,-75,70,20,-126,-14,75,11,-5,21,-91,-32,-51,33,20,74,-88,-85,94,65,61,-45,-38,34,51,25,51,21,82,-74,-51,-61,14,32,-0,-27,1,46,138,98,-54,42,-30,-80,15,-24,58,145,76,-51,78,71,5,-147,62,-55,-61,151,31,-110,-134,-9,11,-0,33},\
+{-95,-91,3,-13,-10,-93,-107,65,83,-108,-31,-78,-48,29,68,51,-5,58,23,12,-18,-58,23,-8,-49,38,12,-79,69,-18,-96,-100,-87,-98,-4,-17,29,-52,-49,-6,160,-71,6,-87,-81,0,171,35,-32,-67,48,38,-34,43,-44,42,8,96,-7,38,-73,-95,20,24,-79,44,18,-120,-22,38,-24,-127,50,17,22,-4,81,15,48,26,73,-26,47,22,-74,0,85,36,-83,-33,28,-14,-23,-73,21,-21,15,-34,-81,21,-61,-17,33,61,92,-31,69,-5,81,9,79,31,-21,-27,-30,32,-48,45,13,-36,-21,-61,-94,96,-2,-14,13,-58,58,-2,-20,-100,47,-70,86,73,63,-63,-127,-113,34,126,-59,69,-93,-24,-115,-19,62,4,-109,-91,-42,-13,-160,16,25,94,88,63,-48,34,44,47,67,39,-66,-5,-117,60,-49,-51,9,80,-18,-37,73,-16,-88,31,-94,52,-31,10,38,-88,-40,68,46,-45,-7,21,-67,-40,25,-50,-16,35,-76,-50,46,5,-81,-36,-8,-73,47,16,-8,-73,-90,-71,31,-57,19,-81,-102,2,-46,46,-93,-84,-72,-14,-7,18,-62,-114,-27,80,-17,105,-115,-20,-62,25,-14,-28,128,59,-49,3,-65,74,-52,-75,-19,-42,-69,-97,-3,-107,-82,-72,86,69,-16,25,17,87,-31,38,-27,82,-60,-54,61,36,34,-9,-35,-45,-75,41,36,8,92,-21,-38,-57,-28,41,56,-36,10,-8,24,80,-60,56,-79,23,-85,65,-73,78,59,74,-46,66,9,48,42,-48,-13,26,-83,-4,-90,77,75,-24,-55,-56,-0,-53,-5,58,66,-52,41,-46,-26,89,-13,38,100,84,55,-123,-62,-101,-48,51,114,32,-63,-71,-11,41,109,64,-19,28,52,-25,-111,-58,80,-41,31,53,-80,10,11,-126,-122,-148,30,20,-6,-1,-18,-27,-0,-53,8,-38,94,-48,93,16,67,-117,95,94,-24,-49,91,46,-45,-1,-41,-57,31,19,6,-3,110,-42,56,88,-45,-49,83,-11,60,-33,-1,55,65,-71,41,-95,-1,-27,107,86,-56,-27,-140,18,-9,25,70,25,102,-85,12,-31,126,-3,63,35,-16,-19,32,66,-5,-75,-14,-17,-16,-50,-39,-2,-70,-14,37,75,-7,-92,-102,8,-12,-40,-49,-79,91,10,30,-67,-57,-55,-77,-44,-25,-15,-15,-64,16,15,-117,-20,-89,-54,-57,156,45,100,82,-98,-117,-56,-62,34,-84,-4,-45,-20,-19,-58,2,19,-44,-11,30,-70,-91,64,-63,-12,58,-49,118,23,15,-16,-67,33,-55,90,-96,-24,-42,52,-18,54,27,39,-36,-11,41,80,5,36,-50,76,82,-59,-70,-18,64,-48,-64,81,-3,47,-24,-48,-35,-74,-66,45,0,47,-77,77,-88,-16,27,-65,75,-70,-35,1,20,-0,20,-65,-24,-80,-100,-0,-35,3,86,39,-46,4,-31,42,-42,110,102,90,90,-64,-34,94,48,43,51,82,-65,-0},\
+{22,5,-101,-54,3,83,29,-16,-24,34,-13,-75,5,44,23,51,-21,-1,63,58,75,-63,-60,74,-54,-86,-1,-49,-30,-6,88,76,63,-78,57,13,-14,79,15,-37,47,-8,72,49,-38,48,-145,36,-13,84,15,81,-120,-57,-24,37,-31,-42,126,105,42,62,-37,-21,-49,42,4,-91,-26,-31,-86,24,39,-9,94,3,-83,-73,39,62,-65,9,-8,-8,-54,22,12,-12,-70,73,62,-25,36,-44,-74,-92,73,-66,-33,-19,-17,86,-74,7,8,-50,-51,-41,-62,62,71,-56,44,-71,-39,72,105,-52,70,-65,37,-12,81,-49,103,-52,23,-81,11,12,18,-6,60,52,7,16,-81,42,-100,-55,-12,-75,-44,7,-95,19,-87,9,-17,72,48,-21,-99,-105,11,-78,-52,-124,-122,4,75,-46,55,108,79,31,50,-62,-91,-116,52,15,1,-53,-55,-49,-45,28,-73,-51,56,13,83,-27,46,-94,107,33,63,47,7,48,-14,-69,44,-37,43,-50,51,-70,68,7,94,85,-74,67,-88,33,-57,-71,-17,18,-13,57,-22,-70,52,-76,46,-3,84,1,65,45,26,-139,105,21,135,-47,63,-175,90,-141,74,112,28,-60,79,-82,-2,-91,-16,-35,82,39,-20,-48,-110,68,-79,-64,79,-42,-28,24,-82,-7,85,11,-97,16,13,-6,50,-35,20,-50,-28,-33,90,1,65,12,-54,43,-69,-87,-22,-65,94,19,56,-33,-76,-69,-88,-7,-54,28,87,23,73,-71,91,82,76,-77,32,-68,42,-76,18,-73,-19,7,-55,94,67,36,60,-91,40,-48,78,-13,-30,-49,20,26,78,-46,-22,-13,-0,-102,-84,82,-70,-71,-19,-52,46,-96,27,-46,28,95,8,-17,-153,63,-23,-66,-89,-9,-26,53,58,-10,10,-78,-106,11,-61,-39,-64,50,-53,9,69,-34,44,57,-70,-7,-70,1,40,-21,-74,80,25,17,81,60,-30,53,-35,55,-17,65,-31,-6,62,9,63,-12,24,41,-126,-16,46,-55,38,-57,54,32,30,-32,-113,-21,50,-22,39,67,45,54,85,28,138,63,-55,-77,65,-0,26,-73,38,-15,-17,72,-23,16,-30,-35,-4,-26,4,15,10,-5,64,56,-44,-23,42,72,-66,-125,-33,-82,-29,48,58,169,123,12,-31,96,-33,-63,108,84,43,8,65,8,61,-67,-106,105,-46,-81,-104,2,-133,-51,24,21,-24,-74,30,-68,73,-34,79,-42,-6,39,-44,58,12,-66,46,70,79,-15,91,115,-88,26,-22,-26,-57,-2,66,35,-93,-114,31,27,-56,-97,72,44,42,94,31,-101,-38,83,6,58,-64,-48,-76,83,5,108,95,-62,27,-31,80,-41,53,-18,73,-23,87,89,-86,63,-92,-17,80,12,18,81,-54,84,10,-46,-53,32,-83,-77,74,-25,73,-24,38,142,-54,-54,54,28,60,-6,-96,12,-23,-8,6,48,-62,25,-32,-116,-76,-71,-16,-44,-61,-56},\
+{-20,30,5,46,78,-39,-56,-115,72,59,-70,-59,-6,-80,-64,-59,-60,20,95,-172,70,-78,141,44,75,22,-44,43,-6,64,69,-73,31,13,-22,-4,-148,-8,42,20,-52,159,-18,-19,74,-69,-148,-13,-6,9,50,-111,42,-14,61,85,-4,78,49,54,49,-44,-22,26,-25,82,232,142,-14,-96,113,85,14,17,-23,63,-76,11,78,70,-11,45,-13,-15,38,82,-65,-62,-47,-76,63,-65,-35,11,-75,-74,-37,66,64,38,82,-135,-42,21,-64,72,4,-3,25,36,-103,49,-87,-18,36,-84,9,88,-121,-187,67,-70,6,-34,39,-113,-41,-63,110,-11,-0,56,-90,-39,23,-11,35,160,-46,36,-20,-78,309,166,-12,-89,-39,-21,22,-46,41,-121,-113,-162,128,-1,34,-137,33,-71,157,-41,62,-142,64,-51,110,62,22,-53,142,-55,43,73,74,-72,-13,39,23,111,53,-78,-3,93,-83,-26,49,-128,-1,-64,-77,56,-51,-92,29,65,49,12,-82,-70,158,86,52,97,-26,-56,-15,-93,-69,-35,16,-136,47,-14,7,122,61,56,-66,-65,74,50,36,-143,-81,-72,-78,90,77,-16,11,-107,154,-91,-32,2,186,2,180,42,45,-95,-7,-107,86,100,84,-166,-37,-56,84,69,-1,12,-21,25,-37,-93,-45,-37,34,124,-15,-86,-93,-78,128,-8,40,-115,-60,-46,4,89,39,16,-103,-85,-69,76,70,164,20,-108,-84,-40,191,40,36,62,-74,32,25,-39,85,-6,-67,-74,77,36,90,20,-58,-47,76,-30,37,-38,25,24,25,66,-32,38,34,-15,-36,-48,-20,-71,19,27,97,-67,-75,66,14,29,-96,-107,-107,-66,22,-3,-25,-6,45,141,-149,-63,-71,-75,46,-11,-100,53,59,10,136,73,-42,-180,-174,117,41,61,-71,0,-49,125,17,77,-13,13,70,-35,-152,-22,74,3,-15,52,-86,173,95,64,75,43,-164,115,-33,-27,96,15,-70,18,32,238,101,49,33,72,58,53,22,-18,-40,95,48,69,37,-6,61,-10,-60,-39,-82,-28,-22,-10,76,-68,-12,-60,-75,-32,-21,5,54,-29,-159,83,-126,-10,83,-130,-78,-16,40,-17,55,-46,-64,154,42,31,132,-62,-54,13,-73,168,45,-10,-40,63,89,53,39,-60,-137,-83,-35,9,-74,-43,68,102,2,-6,-61,-11,-50,-2,190,-57,-93,-130,-4,5,-64,20,-21,51,48,-55,-57,-69,71,-50,-41,-94,117,127,69,40,-112,-81,25,111,91,64,-138,-80,-74,50,77,-54,95,-95,56,21,158,-66,-37,-67,-8,18,-74,6,-35,54,-31,68,7,-113,26,-20,122,44,26,-44,35,-15,43,-48,-97,-3,-22,67,39,-75,-83,-129,2,61,62,-71,2,-68,15,37,-38,108,81,-115,-98,-2,37,34,12,-103,-98,-51,-21,17,141,11,-105,112,140,154,-102,-47,-14,30,10,34,39,12,-94,38,122,22,19,-47},\
+{83,-0,74,-19,-28,75,81,121,-5,-77,24,-10,-42,42,-37,-58,-48,-66,122,10,-84,63,-78,-21,86,-81,-86,55,-25,-8,75,49,-29,-73,84,55,-63,63,4,-23,-38,27,53,-42,68,-12,170,-120,121,-21,-36,92,59,42,59,6,-43,125,-137,-25,224,-28,35,16,26,67,18,-13,-114,21,-155,-16,80,-74,-56,31,9,89,-25,-28,-69,61,-8,-75,8,-33,67,36,50,-126,25,28,97,-93,-87,34,-38,-77,41,-23,-48,21,-78,-43,-14,45,63,7,-6,19,-5,84,164,59,28,-52,-68,-5,1,31,-29,18,37,-60,-25,42,162,36,90,59,-91,-61,44,-34,60,98,-20,-35,16,-118,108,-39,-90,-50,74,-3,118,-81,-85,38,69,25,56,49,82,129,33,-26,-100,78,-11,18,-40,-41,54,16,33,103,-33,23,-21,70,44,9,-69,15,-48,-97,94,40,-45,6,106,47,-68,46,41,53,7,-36,-107,-51,131,-72,50,-75,37,-66,-86,-19,-11,6,39,83,-152,37,83,59,-61,-20,-94,-69,91,36,43,-67,69,77,152,-29,-54,-0,-107,27,14,-149,-66,144,47,148,55,-59,20,56,81,32,-58,-67,40,20,-17,50,123,61,-82,23,108,70,-5,-82,-17,42,-53,37,-69,98,22,-87,-113,80,-37,-118,129,8,58,-39,-17,34,40,-14,-80,-27,40,-5,-63,28,33,8,-55,-6,67,-67,30,-168,61,14,-114,-49,-38,-1,-71,-3,86,-53,-74,-78,10,-24,101,-29,46,-21,-82,-50,-75,61,-28,88,-87,78,-24,-13,95,-23,22,71,-45,-32,2,-113,-21,72,75,41,52,-54,4,-4,-43,-41,-101,-114,-63,-6,23,24,10,-3,25,12,41,16,128,67,11,38,10,106,145,-19,-32,4,-5,131,153,-28,-34,-32,79,-17,5,31,64,39,-25,119,-16,-78,84,-66,-45,-74,117,41,6,93,-48,-10,0,16,-9,47,-89,-27,-3,20,41,-9,-65,-58,-29,99,31,116,-15,-74,34,1,-146,61,-97,-4,-0,-2,-48,80,-117,-47,27,26,-72,45,-57,78,22,51,74,75,-48,-71,141,-28,49,81,-86,18,-15,-62,6,-50,46,-110,20,48,82,36,-22,20,-92,17,75,-103,-75,46,-51,7,9,-5,-8,-34,69,-12,123,-105,-7,104,-4,-69,39,-88,-5,51,2,-41,-147,-53,92,93,12,-81,30,14,44,6,-59,69,71,47,-56,61,60,-103,-51,60,-82,-9,56,89,-46,87,42,-23,-112,-54,59,35,27,28,-23,-70,-12,-68,-42,72,41,-77,-103,-50,47,4,71,-80,2,96,92,-91,67,-75,3,-92,92,54,42,34,65,32,-24,-84,11,-34,-46,-13,67,74,-6,0,16,45,57,-73,83,34,-95,59,-8,127,-6,-63,41,-78,-10,74,-1,-80,74,-37,51,-27,42,56,-19,103,12,4,-22,-104,12,38,8,-129,-28,-61,99,135,82,-36},\
+{-54,-12,-67,57,71,-30,5,63,25,30,-77,-23,-62,19,-14,-53,-2,-85,-57,41,38,53,-74,-82,48,-96,-41,-9,-69,-86,-18,70,-30,43,7,-80,-96,-58,-72,77,-44,-111,-28,-43,-17,54,43,-101,-12,-30,77,89,-2,101,9,-25,-62,-20,-58,-59,17,24,8,139,52,41,21,-48,-120,-60,-86,72,-96,-24,77,53,-46,-91,-77,-43,-50,-9,-49,80,72,-76,6,-28,13,22,-1,48,73,-78,-31,-87,87,-65,-44,-3,-36,56,-70,-50,23,63,-11,-26,7,-5,3,-32,47,78,-1,64,-81,76,-36,-49,6,68,109,21,-58,73,4,-81,22,62,63,73,18,-109,95,-54,-49,36,-58,-46,17,-52,-22,-71,-84,-20,-30,45,-61,-40,-20,-45,-1,16,-64,85,70,68,12,15,-77,55,52,-47,-53,-56,-24,-94,-39,-24,-12,-80,67,71,37,-32,-23,-44,-76,54,59,96,70,-16,-79,-63,8,100,-30,12,-85,-62,70,-15,-54,101,-73,-29,27,-77,-65,95,58,-63,-89,-13,-92,31,43,-43,-111,5,-6,58,-72,78,-84,100,27,56,-19,-20,13,27,-30,140,34,-94,-58,-65,70,12,92,52,31,-64,40,11,3,98,-39,-63,106,-66,41,23,-47,16,12,5,90,26,-41,23,15,-45,-92,-33,-16,-45,-87,-5,-1,-94,-43,48,-39,-2,72,24,-79,7,72,-14,-25,-19,48,15,25,30,15,11,35,72,61,-6,22,66,80,70,-57,-13,-2,59,43,30,9,35,93,-15,-81,-4,69,-19,-47,59,-70,-89,7,-32,68,60,-41,65,-78,-7,-70,63,-79,-8,63,-62,61,-44,92,67,32,81,-25,-73,80,-69,4,113,27,-23,-29,49,82,119,-57,-68,-70,-54,-78,-65,-55,119,-90,-47,-21,35,6,73,85,-30,-1,-16,-26,74,80,-27,-60,75,65,-43,63,-23,-16,47,-80,5,-49,-42,80,38,41,-54,59,-65,64,-58,-85,24,-107,-73,46,-12,-25,-33,-33,26,-101,-100,-1,86,-85,43,50,16,70,-32,-93,40,55,93,-82,74,87,-15,-38,-53,-37,-6,-16,-58,-105,61,60,63,-6,76,-18,-95,-27,90,12,66,53,53,102,18,43,-85,92,-56,-7,53,-66,22,94,-22,44,-50,15,120,90,95,140,110,-52,51,58,80,66,41,77,-50,57,-45,-95,-25,119,-43,5,-72,-42,19,-78,79,-17,110,-89,49,31,79,22,-38,-102,-6,30,42,35,36,4,-2,81,17,65,71,102,-67,-104,12,55,63,-68,-49,-15,-37,-93,77,-84,-14,18,-54,20,-75,0,-80,-45,10,-93,-95,100,-29,-2,49,77,33,10,-42,-61,-12,21,-71,34,-7,-69,-28,24,60,35,-1,-68,62,62,67,-3,-33,-6,24,-26,5,26,-97,57,-74,26,7,-64,56,-65,-36,-48,-26,77,99,-49,-43,77,86,-42,-34,30,-53,-32,99,-80,66,-49,64,-88,12,-60,104},\
+{-83,-71,-95,11,11,-23,-82,55,-78,-12,-5,-108,44,-17,-110,77,50,2,27,11,-12,-5,-57,84,-138,85,86,-44,20,48,-58,99,-54,-1,20,55,-60,-7,-141,-107,-118,51,-53,3,-12,-16,44,13,-158,131,-82,37,-46,-17,-104,116,37,158,1,-44,32,3,-68,103,-113,21,-52,43,-32,45,-48,80,68,41,-75,82,53,-88,-51,35,20,-35,-69,66,45,26,21,5,77,3,39,49,-87,2,38,-53,-64,54,2,97,15,-16,-26,70,-61,67,74,-79,46,-138,-45,-94,-17,24,59,-70,22,-67,-80,-27,-97,-2,13,-83,-15,43,27,66,-73,-37,-64,-19,-45,-48,-9,26,-127,-29,-62,-13,11,-84,-11,-137,-46,-58,-198,117,7,-161,27,-101,14,192,-105,-95,62,-55,20,-68,-133,-50,67,19,86,3,34,23,-38,-29,-86,8,36,115,86,9,-68,-37,-2,-53,-10,-25,-126,-51,55,15,-36,-29,-35,-17,-18,64,-0,-13,47,123,69,69,89,-67,34,-1,-59,62,19,34,65,-1,64,-72,-6,24,-5,-102,71,-64,-26,-53,-26,-103,7,-131,-84,58,17,144,-100,-69,-9,99,79,2,-170,-8,122,-23,-17,-42,5,4,-67,41,-48,54,64,-40,122,38,80,-90,-83,30,-72,-66,39,-133,-60,45,4,88,25,-67,-66,31,-42,-3,33,86,-52,-91,-9,23,-20,41,48,74,38,70,73,13,37,-23,-24,-56,48,92,-77,40,54,-51,-70,8,-78,-10,-52,20,-10,13,38,55,-25,80,56,-17,-0,65,94,-5,-52,-66,81,6,42,-42,37,-27,-25,-14,-69,21,-42,62,-73,15,-106,23,109,-84,36,80,-28,-66,-91,7,7,-107,-83,65,-18,126,-3,-12,-73,42,-22,-86,-12,-75,-91,-48,107,-9,37,-19,-33,102,33,-17,-102,-88,-113,54,-76,24,-20,1,-30,-41,-61,-28,92,64,-38,-53,92,5,121,37,41,-44,-95,74,119,105,67,-18,-103,-33,47,71,51,63,-31,9,26,-2,66,83,49,-132,-10,-71,-36,-71,-85,76,-53,-21,-48,-37,-51,-12,-16,-119,-42,4,93,-32,97,93,-29,68,66,62,-30,60,-51,-11,-55,-29,25,-80,-92,68,161,114,-83,74,39,-68,-72,53,-33,-1,-91,13,133,222,95,1,38,-3,-7,18,77,18,-61,-27,57,58,-33,114,50,116,-27,-169,77,-43,18,50,53,43,-23,5,59,-10,-82,-20,-1,95,-53,-34,-50,-2,36,17,-55,27,88,-65,-60,64,-39,-40,108,78,-19,57,-55,-13,-70,51,-16,6,-35,-52,-59,-56,72,102,71,59,85,66,132,-20,65,-50,74,40,69,115,-39,46,29,-46,39,-65,87,-35,42,-96,30,25,19,14,-39,50,-76,-23,-9,-19,-85,-136,73,3,-64,111,-39,63,65,13,-39,-54,156,147,151,35,4,-59,57,-9,-18,-57,5,-61,47,-42,44,60,26,26,-102,60,117,-130},\
+{109,-13,61,76,-30,6,-76,-74,100,11,-66,-72,5,-97,55,44,-106,-61,74,-22,-68,-85,-52,58,-60,-21,-102,-18,95,6,80,9,16,95,63,3,-22,-120,176,56,2,12,45,-44,-21,-61,-12,50,62,-23,-50,-4,131,-98,41,-13,66,-3,57,-47,126,-99,-32,36,32,123,131,45,-121,-139,-22,177,-9,99,-23,60,-33,-37,21,55,-25,44,94,-116,48,55,49,39,-10,-43,-20,-17,-27,-56,-80,-2,-70,23,103,-85,36,13,-63,17,-25,56,-80,-53,84,-98,-17,87,-39,-55,41,-145,224,-19,-85,0,15,58,-77,42,-119,84,30,14,-140,26,94,23,-71,36,-77,60,-37,-94,197,16,-155,62,-21,-46,35,-13,-43,30,-118,37,33,-91,18,65,-86,-75,-95,167,-5,6,-106,8,75,79,17,45,-86,-33,99,53,-54,-67,65,31,-7,-7,9,39,32,6,93,-93,-13,51,41,-27,-50,38,24,7,-66,-117,125,80,-54,-13,29,-30,28,61,-49,17,55,2,12,-37,20,-16,49,-95,80,-29,-142,-45,49,-101,-63,-112,-4,13,-135,-89,23,-47,90,-63,22,-144,-156,5,-13,-81,-7,-91,-39,44,-149,-23,-103,-10,-61,92,12,13,-25,55,-39,145,-2,-0,-10,28,79,-101,9,133,80,-66,-40,-16,18,65,85,70,-97,-28,-103,73,-101,-9,61,-1,-67,-44,-111,60,-75,-53,-15,44,-28,23,190,-135,-43,67,77,-57,43,59,24,88,-78,-15,18,-69,36,-54,48,77,83,-85,20,20,-14,-56,8,12,-53,-46,3,-21,-5,25,2,-73,63,28,-11,31,-68,-66,30,87,-84,-18,29,-39,-34,-33,67,-101,-39,-101,-70,73,-68,-171,-47,-40,2,-57,-17,-80,-65,25,-39,1,-27,-3,8,-14,69,17,42,54,-87,-15,76,45,-43,175,-113,-20,87,-89,4,189,-68,-3,173,84,-11,-116,115,-113,-96,5,-25,-33,13,6,-106,-11,-48,-105,-9,-50,59,78,22,2,122,-60,-95,-18,101,28,76,78,43,22,131,-77,-136,52,33,-80,-52,0,-22,-56,53,-6,108,33,-39,-10,16,9,57,-46,3,-22,-66,-81,-47,28,-11,-48,41,-25,103,79,-1,-0,143,79,82,154,-97,-42,146,53,-47,-94,9,57,-65,12,51,-30,-82,-93,19,27,-82,26,65,15,64,67,-18,-119,-77,25,1,-1,-72,-77,50,3,-83,-138,-112,-41,-58,64,-55,55,-31,7,-107,-38,-23,-49,-89,89,-119,29,22,-124,38,37,103,77,41,92,80,-97,33,-6,-81,-16,90,-33,88,14,-34,47,-35,-37,47,-68,68,94,52,-54,54,6,111,146,-58,88,2,54,37,17,-46,76,-102,82,-63,-78,70,82,-89,-34,-4,-11,57,153,-6,29,76,-115,-20,76,41,46,-1,-44,-5,45,-129,63,-169,-30,-14,49,41,12,-78,-126,-69,-2,55,16,73,90,7,-275,-7,13,52,53},\
+{5,-26,-115,122,108,5,69,-97,-129,-60,-26,50,45,-98,32,98,-21,13,-56,46,103,-51,25,-44,72,20,68,-84,-60,61,-29,-39,25,-38,5,-18,65,30,36,-202,-45,84,62,71,35,-175,-77,-52,-25,28,91,-40,-147,156,-95,-10,131,46,81,-23,-78,-139,55,30,218,57,-22,-26,2,19,157,153,-14,-7,-95,-61,20,4,-1,29,-2,4,-98,106,17,18,-61,-4,69,53,-55,-86,23,71,78,-22,-55,-43,-66,56,-60,61,-45,63,21,22,-103,2,77,51,-45,-264,-149,51,-31,64,-63,-30,-75,-38,95,-107,55,21,13,9,5,43,143,72,11,12,-62,6,90,-45,22,59,31,-15,19,-45,-43,61,-104,-6,-174,119,64,-4,-111,-117,-23,90,112,-49,-49,-83,46,65,-78,-105,84,37,-1,24,-2,90,97,42,-5,91,48,-17,128,106,-90,80,16,-96,-96,-149,31,156,-33,-49,-124,-97,-77,-79,56,-5,-76,-19,-80,-37,-2,-33,127,17,14,92,64,94,99,5,46,-111,-31,66,71,-17,35,-6,-87,77,173,-160,-200,102,212,-17,-41,-79,-89,78,24,-18,-70,52,9,-4,-29,-107,-63,9,-72,82,-153,-59,54,-5,8,92,105,-44,173,28,71,-11,-80,-116,43,-75,113,-2,70,-42,-65,-56,25,-2,-19,-125,71,20,-138,-43,82,-53,89,-50,-2,-36,66,29,117,68,-110,30,-4,70,-27,38,-41,41,-81,-17,4,-80,-70,-85,-94,46,-36,68,50,-5,22,-29,13,43,-52,-50,0,93,-25,73,89,67,-71,36,-63,68,-46,-10,44,60,-82,-80,-78,-5,-32,9,122,81,25,-71,-125,168,32,-16,-40,-78,-90,-66,-46,-68,-22,-78,-110,-140,74,-9,54,-23,67,39,61,21,82,-65,36,-32,-92,70,94,119,79,19,-59,-101,71,-22,151,56,-51,-18,-67,25,92,164,-83,39,-30,36,263,120,-38,115,-8,-3,-14,-71,-52,-43,8,54,53,-1,89,-51,-122,-17,26,22,-77,4,77,-135,18,40,-145,-78,6,41,32,77,-79,40,-88,-5,-9,-15,-48,12,-27,11,26,-84,52,-41,-66,9,94,145,18,46,-6,-29,-24,32,90,79,25,5,45,-76,54,35,-85,59,91,55,5,74,-89,26,66,38,49,-63,68,76,58,98,8,-11,-6,67,-114,-61,13,64,20,2,-4,3,47,51,25,-46,105,-13,19,-110,-80,-107,-22,31,-73,-59,-59,-92,-31,-47,-65,25,-35,-158,70,81,15,79,17,-140,6,-109,-49,8,-12,-125,27,37,-70,-94,42,77,-19,33,47,68,45,-94,21,108,-5,51,17,38,-50,131,14,54,-19,26,90,82,51,27,-4,-89,-73,142,-69,31,-19,50,77,100,-62,88,139,82,1,-19,-95,-45,39,-50,127,53,-84,-96,-27,-170,92,42,45,-25,-86,-97,-54,-89,-80,70,53,-57,105,3,-72,59,22,-128,25,144},\
+{28,139,41,-21,119,18,-36,-27,63,53,59,7,8,61,71,92,-74,-50,-134,-63,-23,-71,-22,-97,13,84,-28,-44,-22,16,-48,-112,34,8,11,-111,65,-38,28,165,25,125,54,109,50,-57,-16,-82,130,-75,94,-16,-61,-18,-43,80,41,-148,42,-86,-47,-35,33,-19,22,-50,50,93,-11,-211,-19,18,-84,-43,11,-61,-69,-27,70,21,44,41,-9,-93,55,24,-5,95,-25,-69,84,-78,86,-61,29,10,82,69,34,-16,38,4,-83,8,79,16,-63,43,-16,91,16,-9,-37,43,28,89,13,-116,-65,71,43,-15,14,-18,41,48,55,51,-78,-27,-42,74,-112,-28,8,18,-1,-34,18,-67,-35,-80,12,103,-35,123,110,59,-110,148,108,-1,-23,-57,-159,70,-65,-29,-58,22,-14,-24,-171,130,18,-42,48,-43,69,22,-25,132,34,-62,-5,-27,9,84,105,24,-85,92,-85,90,60,17,-99,1,-107,-64,62,2,-213,100,-39,-56,75,-5,-132,61,-58,52,74,-44,-25,-3,-12,71,-83,67,-21,-49,-49,86,32,-66,-77,144,21,106,-40,127,103,56,62,-101,-130,92,52,-31,-4,112,-86,-44,-117,-81,-67,51,-95,134,-40,132,-128,-12,55,62,115,-68,-85,-39,54,-82,4,-72,191,-26,-110,13,-51,106,-41,91,-43,-2,22,4,11,36,77,82,-45,-146,47,-37,-37,-72,49,-18,-146,-42,88,64,59,92,-41,-61,50,-55,57,-88,-30,78,-4,-87,89,-52,52,-35,-61,-89,-56,-59,96,-83,-37,-12,-49,87,23,-9,-50,34,58,-77,63,32,-68,3,-39,-88,-82,-43,-87,-87,34,-79,54,-40,103,65,-2,95,84,138,-6,35,149,113,-6,-54,77,-111,-54,-17,76,-83,-99,-130,52,72,-30,59,105,-67,4,-39,63,-113,34,-11,-58,-2,-45,-5,56,-74,-0,14,85,-49,21,14,-15,-26,-43,32,114,-53,-4,-81,-31,41,-28,-81,34,122,106,115,-37,6,47,-60,-43,-53,48,38,53,84,79,-68,23,20,-2,51,91,25,-15,-28,75,-106,-61,-11,-31,-84,-52,-38,62,104,86,-21,-39,-52,-95,98,-82,21,-16,40,-31,94,-62,28,26,-57,-194,30,-46,41,18,-67,102,106,-48,-92,33,76,100,93,-0,60,-141,-41,-24,52,-114,2,-11,125,203,204,25,28,-90,-34,206,43,-73,6,-137,-36,-44,-51,21,9,-67,25,30,72,-58,19,-21,55,68,75,58,71,67,-19,-0,-16,-46,-47,14,10,-131,43,-39,-92,-58,-11,-9,77,24,36,-66,18,84,-7,-121,-67,4,21,2,78,-35,50,-37,79,-26,-2,58,-8,-78,21,15,98,-89,-49,90,-52,19,-3,43,-36,8,-52,-42,84,61,18,2,51,23,88,123,-28,-49,78,34,145,50,8,3,-87,-103,86,-25,-73,-50,-153,-111,106,42,14,-34,76,-96,117,-17,-98,44,-32,-144,-26,46,-91},\
+{56,9,-14,-7,18,-69,-2,-42,-34,-4,12,40,-71,-13,-1,-17,29,51,-39,-53,-17,7,36,2,-27,21,63,-34,83,-0,36,51,59,-22,-17,-82,4,-1,-111,32,39,-44,-4,4,92,-8,-62,140,-130,44,7,28,21,-2,40,-136,-10,68,-30,-73,14,57,-89,-43,-13,82,-18,-80,-50,50,-8,4,4,58,21,-28,81,-29,-51,94,-88,-86,-42,28,65,-89,-16,30,-5,-76,-0,66,4,8,86,-93,27,84,-78,63,-38,60,-23,-53,-20,11,-35,83,-97,-68,47,-54,-25,55,19,15,-64,-68,0,43,-27,21,30,79,-33,27,-135,-46,-32,97,-18,79,81,-61,71,-67,-39,12,68,1,-72,54,-30,11,-8,83,-45,-70,13,-39,-114,-65,61,-71,-44,-34,-51,-57,47,-60,-14,18,-82,60,-103,60,73,55,-67,79,-49,-28,-51,-113,39,-58,-81,-9,40,-67,66,24,-44,71,15,-37,64,21,-17,38,72,-19,31,100,2,17,25,56,-101,25,68,-14,-35,52,-108,53,-39,-45,-2,-32,-83,-7,-32,83,-17,73,-10,-29,-93,-30,-43,44,52,-34,-25,-67,83,-5,-85,-33,3,-97,128,51,-55,-84,45,91,-12,61,-51,-13,-32,-20,-83,-27,-63,-28,-79,1,-60,30,-43,-76,37,-81,-24,-80,-19,-80,62,-97,64,-18,51,73,40,-5,46,-41,-15,94,-55,51,-39,59,-23,-21,16,39,-7,-33,83,-61,-21,-76,-13,75,-49,56,11,66,38,-46,17,-46,45,-93,-30,-68,26,-16,-13,-82,48,51,-57,-91,-38,-82,-37,-10,2,42,50,-65,74,27,11,-48,43,67,-43,17,-19,56,-38,-99,12,84,26,64,41,-45,-42,55,29,-85,-9,44,-82,3,52,67,74,90,-30,36,33,-66,-86,-31,-27,52,-37,-31,86,-54,-80,-90,-40,59,-61,19,-20,78,-52,42,-40,-71,-67,33,92,-36,48,3,-104,-44,-28,-24,18,99,35,102,-79,59,83,63,24,-47,-10,25,-46,-28,-74,24,-19,-56,79,0,26,74,44,51,-25,-29,-1,-23,43,18,-19,89,51,-59,-29,110,-50,84,-86,99,-93,-73,103,-2,-16,-20,33,10,-59,51,71,100,22,-3,21,65,13,-11,83,50,57,39,21,-20,-71,18,50,7,-39,91,-67,29,2,49,-22,29,4,-133,24,43,58,71,105,92,-106,58,-29,-47,-72,86,34,-92,3,-8,-59,28,-38,-33,27,-84,78,-79,-57,-30,-3,7,5,-36,90,48,-0,4,-33,41,-46,-46,50,-90,19,87,51,-14,8,-41,75,18,34,-10,-94,-46,-75,79,-83,-66,91,-89,-37,-89,-83,4,-12,5,56,-87,-52,-50,24,33,-81,31,39,81,37,-43,79,32,-69,-77,84,98,-86,63,-67,30,-46,-65,-26,1,11,-94,33,-106,49,63,-39,-89,96,77,-82,-34,32,45,33,125,-86,-48,-15,-17,-62,-89,86,-41,-79,-33,-80,83},\
+{17,-90,18,-47,34,-86,25,-75,-1,-88,-64,-69,-26,-97,24,90,56,66,5,-37,-72,35,-22,26,-14,48,-18,-84,-80,-42,-62,89,9,-19,-17,-12,110,10,-49,-81,21,-106,46,-12,57,-51,-63,-11,-42,-52,23,-109,14,-32,-70,66,12,49,-26,46,31,-15,10,63,-58,18,3,27,27,16,-55,-7,26,-80,-56,53,9,23,57,46,-89,27,90,-64,48,14,39,-11,67,75,-28,83,-4,50,-78,3,74,91,68,-48,66,-35,49,-44,-84,79,45,59,-10,77,-80,-64,-42,-46,-69,91,111,-24,107,16,-96,-65,-56,49,80,20,28,-9,-120,-12,71,-52,-64,46,57,60,7,53,60,64,-66,-29,68,-89,44,-53,64,-39,-4,9,-31,43,-50,134,32,-26,-28,20,52,21,14,-99,-66,-46,-30,-22,-17,-24,-33,-21,25,19,-37,68,-25,88,45,-89,-41,-53,83,-36,-49,42,30,48,55,69,-23,-36,-4,64,-65,12,34,18,-72,-62,71,36,-85,66,1,-11,-97,45,39,33,-11,-80,30,-16,45,21,-34,-42,-73,32,-14,63,-52,22,77,17,-6,80,-62,-10,26,60,74,-29,12,-112,-28,-14,-53,-7,-38,-62,16,52,-86,-64,-79,20,28,70,17,-67,-74,-10,-63,-62,-72,74,-36,29,18,29,39,-46,6,-67,-31,-44,24,8,20,-21,19,-19,33,2,-12,-4,-20,31,-19,-16,-31,68,-17,-75,70,44,69,-48,-31,-56,23,-65,86,32,17,-87,50,-57,73,28,29,28,66,82,94,65,42,-65,-61,-12,45,-43,90,-90,39,47,-0,-55,-39,-97,94,8,-33,-3,70,29,70,60,85,-58,-13,129,-55,-38,9,26,19,26,17,42,-41,30,-106,94,-76,0,40,-73,-96,-47,8,41,1,-101,-26,10,-18,-34,1,-67,-93,-78,-42,-42,-38,67,19,8,13,-2,116,-71,13,-54,-71,41,-53,67,-53,6,-46,39,-20,17,63,83,56,-36,94,-23,20,3,-67,-61,-71,-68,61,48,90,70,-72,40,101,11,13,5,-21,67,-2,-48,-57,25,24,-32,-3,-95,45,75,12,96,71,22,15,-79,-26,-11,-99,-66,-2,-10,-18,-28,-77,-11,48,-14,81,-34,118,61,-25,-91,120,-74,47,58,-37,-20,79,8,21,33,18,-0,51,6,-57,-17,-26,-98,-44,-52,-55,7,79,-25,-106,19,-29,7,-55,48,38,-99,68,92,-71,-29,-54,54,-16,110,-80,80,46,-74,-10,17,-29,-28,43,-31,-13,30,89,-5,58,24,-59,47,53,-23,47,-55,-46,-52,-47,52,50,-10,41,-36,-54,6,93,-53,32,22,61,-34,-72,93,-1,-57,-60,-30,71,-58,75,-68,82,-82,14,-29,35,-19,-84,-78,45,102,-91,-29,70,-11,-62,-92,113,-44,-126,19,9,67,20,0,-29,15,77,-82,27,-58,-15,82,-5,-4,-14,-93,12,3,24,-51,-83,-68,26,59,24,50},\
+{-17,50,-10,-81,35,-73,-74,88,51,62,45,94,35,53,-1,-95,-18,64,26,-21,27,-54,-25,61,-79,6,-71,13,-19,-3,36,-87,-100,-67,27,59,83,109,-75,-31,32,-35,4,-29,-56,34,-115,-76,-75,81,-6,-94,-11,-37,-70,-38,-127,10,116,-11,-67,-57,43,12,83,-32,-36,97,-66,-10,99,37,21,84,22,-72,81,-13,27,11,-55,70,81,19,48,-84,32,-19,-52,-45,-48,90,86,41,44,-3,12,-44,26,-57,16,91,-58,-18,45,-68,-66,102,-93,-33,-17,17,-17,-39,-15,-37,92,95,58,-15,79,-1,25,18,-78,-77,-74,-25,22,-61,23,-58,56,41,44,-62,84,-37,18,-24,-95,17,17,19,-73,47,-29,-92,-50,74,-49,73,23,42,46,26,37,45,-50,-76,-73,73,-29,-26,70,75,-101,90,39,-71,75,-72,-57,23,-31,50,-61,26,79,-5,-18,-43,-65,-40,73,3,42,-37,-22,11,93,-86,-8,-54,27,-19,-32,4,35,66,73,67,49,11,95,7,32,21,-64,-60,76,-18,37,-23,-71,-53,77,23,20,54,109,-39,45,24,25,-92,-71,-93,-99,-60,-89,-36,39,94,-69,46,35,35,84,-48,60,74,36,-71,68,-21,41,-61,47,65,-18,11,-48,78,-75,-66,-54,-94,-95,49,42,-80,-4,49,-14,10,22,88,-53,91,4,101,-65,-22,43,-77,-84,72,15,-66,89,90,-59,6,-16,52,8,80,-68,-11,-86,-83,-2,-73,31,38,27,-40,60,-53,-37,9,15,-20,57,57,48,61,-2,-29,30,-1,-71,90,-81,-89,14,65,-11,21,22,15,-23,75,-91,-91,55,5,-22,-65,-77,-89,-79,-92,20,75,-10,75,71,14,51,-6,-34,-37,-22,-11,-78,-61,39,79,-53,-15,22,-22,-34,-6,-70,58,-74,-2,-34,-58,-70,-10,51,77,40,103,24,-74,33,-10,-93,-32,-14,10,-51,-104,-85,-20,-45,29,-13,-91,-25,-3,48,-20,60,17,67,17,73,75,38,0,56,70,-58,-81,-21,-3,56,42,-34,58,-82,88,66,-1,10,-69,19,-16,20,-79,-69,-21,-66,-92,-30,-2,-14,-20,29,29,6,-71,-81,44,-29,-61,30,-2,-103,-77,28,35,-53,62,10,-15,-12,-76,-9,32,78,-0,92,-86,36,-44,-85,-84,-43,47,-90,17,-1,38,-29,-81,-64,-105,-54,3,69,10,-88,-56,25,48,32,34,16,-61,96,6,-33,-62,65,-16,-61,23,-74,-11,76,-15,-97,1,26,-59,72,2,80,-60,-45,-85,-51,-22,-55,71,87,2,-75,-74,-88,32,27,-18,-87,-48,-92,-90,-69,12,52,59,-14,81,78,83,43,-72,71,33,47,-8,58,7,54,-10,59,-1,-42,-8,-36,-85,-32,-71,94,-88,70,15,-2,36,-70,40,80,47,63,78,-2,-33,-78,32,65,-98,-56,-87,-49,93,42,-34,-27,23,-62,43,2,-21,-15,-85,-50,14,-80,-54},\
+{14,-41,-36,7,37,29,-76,-32,59,98,-87,31,-19,-18,-76,-69,33,-65,-17,24,-67,79,102,-58,-19,28,9,23,-113,-27,88,-1,-27,-41,-82,105,95,-31,-96,102,73,51,35,-19,-40,-67,18,36,-3,-100,46,11,-68,-4,109,-9,130,5,-7,18,64,46,38,10,-36,57,-43,39,11,-103,-169,-16,-58,-38,7,88,3,-113,10,-48,48,-45,-16,66,94,30,18,107,65,-51,-3,83,-68,24,103,-14,25,-79,70,-61,8,-88,-70,48,8,35,-32,-29,-40,4,-35,-2,20,-26,9,-8,-116,-80,4,34,-126,89,-69,-35,40,-0,59,-6,98,107,60,152,-115,-25,-6,-70,-90,34,-62,15,-53,-29,16,-25,63,-2,17,155,-54,-104,-102,16,21,-14,-162,77,-73,13,48,26,-73,-15,-74,60,-67,101,-89,-34,81,49,-81,80,-15,103,3,34,50,-7,20,75,-42,-42,70,89,14,81,22,-1,77,81,-71,75,71,-103,-44,107,-68,-22,-68,75,46,21,53,-12,99,-12,16,-45,-63,99,89,97,80,81,88,-20,13,134,-93,-14,161,-70,-49,-135,59,21,-136,23,-47,20,-4,-19,-68,-42,-18,-17,30,2,85,73,52,45,-90,62,36,39,146,-1,-111,9,-120,78,88,56,77,-64,75,73,46,40,78,103,86,112,64,28,-39,-38,-43,89,49,-60,-63,-20,-18,119,-50,-27,35,54,9,-19,60,-40,-14,-147,59,-29,69,88,86,21,67,37,23,26,-23,-62,75,-19,-31,25,-39,90,-18,-8,12,29,-47,60,-60,2,33,-74,-82,-28,29,-7,-44,-80,-30,66,-74,-12,-89,-31,72,46,50,212,85,40,-134,72,-39,74,96,50,-9,-19,-3,-0,-60,-3,-62,-2,-65,-21,98,1,110,20,58,-53,-12,17,94,-56,-100,-89,-129,-94,25,-72,48,12,-59,-80,32,68,6,-1,50,-9,95,-72,-3,-97,-4,-43,-15,66,0,-76,-67,-64,-115,47,56,-25,-60,-67,-39,65,110,-32,-35,18,-66,15,80,-89,11,56,129,-61,-94,-78,-13,63,47,-81,-32,-8,13,40,16,-14,-13,-43,-32,-44,-66,-48,71,-45,-1,-69,-39,-30,-14,-45,43,-26,72,-1,-50,-57,-91,-100,168,122,39,120,66,-144,83,61,-111,-62,-49,-20,-63,-8,43,23,-154,-63,-125,-112,-63,69,-37,72,-62,-22,46,-23,-40,16,14,-33,8,-38,-89,68,-75,85,58,42,23,44,-31,102,112,-74,42,-52,58,73,-26,-5,30,52,-6,-3,-80,112,80,-37,-99,-37,68,74,76,41,63,27,-86,-60,64,-54,-28,86,0,38,24,41,19,52,42,45,-31,-46,-29,-10,6,24,95,89,-24,-21,50,40,36,-59,-72,-28,49,-17,-39,-6,110,-8,141,15,-39,16,51,95,29,-2,-1,-45,-68,58,117,45,-72,-4,-55,-17,121,-48,35,37,-102,-104,-34,-58,-30,-28,-131,-60,-127,-60},\
+{61,-70,-42,-1,86,91,-44,-14,-98,-36,25,8,29,-72,-36,89,18,-7,59,70,-18,-15,-17,-91,71,-72,-58,96,-11,-44,-78,-3,-60,10,-76,21,-51,-34,3,13,-40,-97,-63,-1,188,-16,-57,-82,-65,106,13,115,-149,-46,-91,6,-54,15,54,146,-72,-59,-41,-90,61,-47,-18,-59,-78,-64,31,34,30,57,49,67,95,86,56,-17,-61,-46,-93,52,-37,32,98,85,-43,50,-57,-23,-79,44,62,13,91,43,40,14,33,-3,39,43,63,89,80,-25,-47,-30,-104,70,-76,-78,-60,-53,-41,-79,-22,-38,-0,81,86,47,-12,-60,49,45,-26,14,9,-99,-61,18,-90,-43,-24,-52,-7,77,-37,49,-70,63,-106,60,-59,16,94,-103,58,-32,52,-36,4,72,69,-115,-35,-9,156,-35,-24,-10,78,-148,-18,-14,-49,49,-100,42,84,-82,23,-33,4,4,39,-73,-40,-100,79,-28,88,-64,59,-36,-52,48,-19,-24,89,-13,67,-39,117,15,60,-55,-66,8,-104,-6,-56,-5,-49,22,-12,70,108,24,14,-54,19,-55,-29,18,17,-38,8,-31,-41,2,-67,-48,-25,-10,117,6,99,-130,-16,67,-29,30,-7,77,-114,-128,-78,6,41,-114,9,-104,76,-26,-47,-4,-81,-16,-30,4,-86,5,-39,77,1,26,64,52,-32,-66,91,11,78,-104,-15,-101,-18,-97,-23,3,-61,-61,31,-50,-66,20,31,2,105,-32,-16,17,5,-91,-0,-5,-41,-32,-33,-59,24,-66,72,7,-37,-46,90,-30,-16,-12,-80,-78,24,8,17,61,-60,-2,-82,11,18,91,-52,-84,-23,-98,-76,-21,-46,-18,80,-5,-129,45,-98,-81,-22,-85,-71,19,64,62,-30,83,-33,-16,-96,-36,40,-52,-7,-19,18,-56,-41,44,46,-15,26,86,-39,24,67,50,-63,49,12,-8,-88,-78,19,44,20,-110,-88,69,16,-74,-61,-63,-60,-117,-1,131,85,-69,45,-70,-80,116,79,-14,-94,-77,-65,-17,-46,-37,3,46,-173,-65,-73,-10,52,63,12,-19,-99,-20,-67,97,-43,5,76,45,28,0,-39,40,-60,-19,-7,17,-36,-32,-55,-35,8,-58,71,104,50,-22,-72,30,11,70,-64,-26,-86,13,-57,14,-77,77,-14,73,37,42,-82,121,-29,-52,78,119,-36,-18,28,62,32,66,158,2,-46,-72,63,83,-105,-2,-53,-79,29,23,-104,56,56,61,26,-41,15,-9,-2,41,-78,43,-76,-63,-58,41,-90,-8,47,44,-79,98,-41,-68,9,73,22,33,22,54,2,7,-90,40,-36,-80,-36,78,94,67,-49,44,23,-63,92,82,85,15,-6,53,-22,-1,68,39,66,-61,84,-19,41,98,-87,21,59,-26,39,55,39,5,-41,-75,-94,92,-24,62,13,28,35,-8,-95,-100,8,-63,-104,26,-8,-74,-82,12,-56,-1,94,-112,25,49,-70,-17,46,39,74,50,-62,-97,25,-72,-46,44,41,36},\
+{19,-57,-65,-42,-14,-51,-36,-81,-28,28,85,27,-5,-58,32,26,13,-69,-54,-26,-41,85,-97,42,-22,47,-52,36,61,42,-109,26,-48,73,92,-62,-121,-57,-68,23,116,-67,-42,80,-126,18,-55,-83,-198,-50,87,53,12,33,-57,-60,-16,-59,71,-84,-79,-30,-31,-45,9,100,-87,3,40,28,-101,-118,21,63,-33,44,-30,80,-27,-75,86,-90,-100,85,27,73,-83,-55,-97,-10,-81,52,69,21,39,-1,18,-33,3,-90,38,71,12,-49,27,-6,-91,48,-45,109,76,28,14,-43,52,197,-54,67,-70,-22,-58,2,-137,-59,-1,75,4,61,-32,-36,9,-43,-74,-13,-59,-10,-6,24,-23,17,-77,46,-23,39,-38,-50,68,-167,-91,-71,-189,-94,-10,-81,-13,-3,-30,-82,124,-49,53,88,-17,-6,-29,27,61,-87,-52,5,-50,61,45,-36,-13,62,-50,82,-77,14,66,21,96,-40,-22,64,-66,-135,53,50,16,51,-112,-16,-46,-27,-10,37,-106,-77,-54,-23,-38,41,15,36,-70,-49,50,9,7,-4,-89,-49,43,32,21,123,23,41,-93,96,-56,-136,117,17,-12,8,-138,-83,91,35,-40,-15,-105,63,106,-47,5,-52,40,24,-48,68,-5,46,-19,-17,-112,46,53,15,8,94,49,79,8,-65,71,84,81,-51,-29,5,9,-134,-12,-41,38,91,-15,43,8,-54,-18,26,21,2,-89,-17,-9,-26,-51,62,-34,15,-62,-14,8,87,58,-52,-44,-15,22,-73,24,-12,63,-51,10,-35,-58,-83,83,-90,67,-44,9,-19,-2,-37,8,99,75,21,79,-47,82,-21,-31,-17,-56,-14,-93,-58,21,125,106,30,-139,-136,-84,184,110,64,-88,-24,-70,54,64,-97,-99,-7,8,41,11,5,-1,-62,-51,-33,47,37,-64,-16,-21,-9,-61,-11,-87,7,-70,60,86,-17,95,-89,26,-58,2,109,97,-53,-5,-61,43,60,100,-56,48,78,9,-60,38,105,87,-30,-66,-95,106,1,-13,-67,-6,178,-77,14,36,116,-133,33,-62,-44,-58,-45,106,-72,-110,3,60,69,51,-12,-121,36,54,-34,-54,41,-26,-78,-10,-63,52,-37,77,-20,-37,-82,119,-12,51,-90,-6,-75,-80,32,25,-100,19,-92,64,-41,-88,-29,-7,-26,37,43,-6,-143,-4,32,24,41,66,84,62,14,68,-115,100,-69,-9,-9,156,52,87,-92,93,64,46,92,-92,-9,-30,-81,-34,34,-18,12,0,-24,-76,-36,-44,75,-21,87,39,-13,100,106,3,131,115,-13,-16,100,-66,62,9,36,72,26,96,25,-8,118,-91,-79,45,-36,-1,-69,-74,71,-41,49,-108,15,-85,55,84,-13,-36,4,-56,57,44,87,-44,87,58,-81,-83,-79,-35,23,74,-54,50,-12,102,76,-41,-53,-58,-107,-60,114,38,51,-35,-53,-40,147,-120,-78,34,95,-58,74,79,-31,-33,44,19,73,104,-105,15,-30,-57,-78},\
+{-66,47,-23,88,83,67,-52,12,-14,-44,49,103,22,25,-89,-45,90,-35,-37,-77,0,-21,-83,-47,25,83,-45,-50,66,53,76,52,-67,-80,17,-71,81,136,94,5,63,-1,142,-51,-6,-38,88,26,84,-76,-89,-50,-4,15,52,-70,-80,-101,-38,16,97,-4,-144,0,115,10,-31,35,-17,-39,63,-134,34,-11,-24,-76,52,-35,103,-73,85,14,16,-31,-52,-3,45,55,-47,-91,47,-3,-82,-11,53,-73,-85,78,32,-91,-90,-52,-24,14,-40,54,26,25,-7,60,-66,-76,23,-6,-60,45,-117,2,75,52,-37,21,-19,71,-43,48,86,31,-37,54,9,-56,94,-78,-57,-75,-100,-56,-59,-151,26,-23,-154,-12,-51,5,-30,29,65,22,57,5,55,159,179,155,-12,-21,-30,-2,-32,-113,-24,25,-39,-127,-10,-114,46,38,-21,4,7,-30,83,5,-55,71,-55,-85,-37,106,-9,130,100,27,-127,16,-43,6,48,7,-39,8,41,44,-79,10,19,-47,-41,-3,-20,-1,145,100,12,82,17,-23,88,-165,-38,-43,-92,45,33,-76,43,180,80,-46,-186,-83,-100,133,16,-23,51,19,19,34,-25,-25,-116,-86,133,-103,3,2,113,35,59,1,-72,-24,86,-168,40,68,-30,68,9,78,107,27,48,49,-22,72,-62,31,-107,72,0,-2,-18,-20,-33,-18,-10,13,-71,23,-32,-74,93,86,56,-65,-134,19,111,-84,105,-31,-59,-39,60,-23,20,55,-34,-32,47,83,10,-43,31,-85,-30,5,-75,-94,80,39,24,-44,-90,-100,98,-45,-4,-54,66,17,55,-36,-35,-28,-64,48,-28,-10,46,-64,-10,-94,-33,145,47,-135,-4,-56,71,-99,-1,60,44,-132,24,-16,-91,-153,-36,33,43,-57,-75,29,-92,57,-47,-46,-45,7,-11,-33,24,-20,116,-119,23,-8,62,94,57,-11,59,-12,82,-9,19,-68,57,-33,95,-47,66,-11,8,91,118,44,84,23,32,-37,-92,-16,39,0,-42,-17,126,8,27,59,6,66,-92,-79,8,32,66,6,-49,-21,73,53,-107,-52,-71,52,-57,-2,-41,111,15,28,-20,147,53,24,12,30,-22,-23,-28,-55,-144,-65,-58,-100,-83,-49,-124,-84,-90,-99,25,-56,-28,8,-85,-99,-102,-60,-18,108,30,-85,102,16,69,42,-51,0,15,101,-60,-128,-90,65,17,-34,97,-79,11,109,64,-12,97,139,-67,72,-40,58,-122,-14,-71,26,52,-78,10,59,-63,-11,28,-83,-96,0,-18,-28,-1,59,-147,-19,55,26,67,47,-42,-71,57,65,59,-72,-70,-44,-68,3,44,80,-71,-84,-58,10,-85,59,-6,-34,76,70,-37,63,-1,92,-3,27,30,-42,47,90,-38,79,-27,-47,46,31,95,-17,124,-24,-2,52,52,14,-18,-88,-0,-49,-116,30,17,-68,75,-77,-63,45,87,24,-1,-32,-90,107,57,-75,-51,-125,25,113,-105,-9,24,-16},\
+{18,-96,-27,-75,91,-20,40,-62,26,72,-13,34,-94,-42,37,41,-39,-30,-42,-74,12,38,135,-97,36,10,-37,-59,91,28,-46,84,-15,-77,-76,80,-67,-53,-12,-80,-6,142,-87,-8,-89,9,84,65,17,6,-118,-142,19,130,1,5,-24,-61,-71,-87,14,-33,-12,-21,137,81,-5,61,67,18,63,12,5,-9,42,40,-26,87,99,-22,10,-13,-43,-73,-32,-25,55,-76,-92,-56,22,-0,-59,-56,3,-55,-77,-37,-18,-8,-46,11,-40,29,-22,-57,-38,75,58,-97,31,43,-89,81,51,46,60,103,-62,-6,36,55,-66,-102,47,42,-5,67,-27,26,75,-45,-139,-200,-23,16,14,12,-75,-35,-135,-46,155,144,20,-41,-109,128,146,106,-29,0,-59,-76,86,76,-10,-43,-63,65,80,132,45,133,-81,-71,76,-79,-47,66,64,-42,-63,150,104,56,146,-47,7,154,90,100,-29,52,131,68,-5,-74,22,-9,66,26,83,-48,-53,-38,46,-2,-89,75,15,12,-15,50,-7,80,-37,64,13,67,31,114,68,-15,42,-60,-12,-120,-80,-62,193,219,-172,-82,87,-37,214,72,-17,-100,32,66,-25,96,-50,-31,21,95,22,56,-30,20,-35,96,58,97,105,71,41,49,172,14,-34,22,-44,0,80,8,-94,-57,2,-33,-35,-33,-40,9,53,-44,-65,-35,-52,11,-61,135,60,18,-73,-15,-41,-47,80,46,-82,-83,22,79,101,-37,-20,66,-78,18,10,62,12,22,33,25,31,27,-1,82,-30,-60,-53,-47,-46,-57,25,92,76,-36,-20,-18,-54,82,-48,34,62,70,89,-45,93,30,-51,65,67,-36,72,139,-40,-100,-59,72,-23,179,-150,-66,-38,33,161,53,-28,-96,-42,-81,-22,116,98,79,-41,61,-113,83,113,17,97,-41,45,66,97,-52,19,6,-22,5,36,-27,-1,24,-93,42,-3,-86,65,117,-32,30,-94,-40,98,-40,22,110,-77,-14,81,197,-20,-157,29,-126,-89,91,-63,-21,59,22,27,11,43,-49,49,64,-26,93,31,11,43,74,86,-63,-43,69,55,18,65,102,-81,21,-92,8,-28,-40,6,-21,70,24,67,43,89,23,104,-40,-62,-108,43,-7,13,-63,-73,56,37,68,29,-31,-57,68,-23,-56,-67,4,-52,79,67,151,-88,-105,53,28,-96,-90,42,10,89,-24,16,-85,-41,-32,81,39,64,-27,-67,-3,-1,-86,-70,-28,-10,48,-47,128,102,61,-93,-108,28,-18,78,123,-98,-55,-40,-129,79,28,59,-77,-3,47,48,-38,-11,-40,-48,-28,-105,-74,-61,94,86,25,-14,-45,69,88,-29,-85,-32,35,106,60,105,20,-79,16,-63,-7,-59,54,75,-60,51,-58,79,38,78,-9,132,98,25,29,-55,67,70,10,57,49,-53,38,11,-79,25,56,-49,-16,-108,-25,25,2,91,36,-104,21,-39,94,25,-88,98,-101,8,-42,21,50},\
+{42,-8,100,95,-107,-34,-32,-20,20,-105,-70,46,44,16,9,77,-18,-96,97,-21,42,1,61,-53,61,-28,-73,-3,-23,120,-77,58,-26,56,-84,74,-125,-109,137,-74,-139,67,-80,-13,43,31,9,49,-50,-19,50,-76,-69,61,54,-135,-64,76,56,77,-56,-49,8,163,-4,-29,-17,-40,14,45,-71,114,-35,76,39,-36,-75,-72,-25,-4,70,86,-69,29,-68,82,85,6,106,-52,91,-7,-56,83,109,10,-28,16,-40,73,-33,-40,8,52,-53,-16,42,49,-72,35,2,-99,-61,31,-76,3,57,55,57,-41,14,3,17,95,-141,34,13,-62,-84,15,134,-52,-99,-37,-128,43,-49,-10,-54,-34,-7,12,-45,18,2,-51,118,-104,178,37,-27,110,-23,-2,167,82,-21,13,76,-7,58,-37,116,-49,-29,-34,1,-78,130,-49,107,16,-66,113,44,-8,72,-42,64,-60,-26,27,37,-30,-32,86,-67,-30,10,68,97,-74,-10,-4,4,14,29,-11,78,-36,-81,-6,26,2,-20,-63,11,119,43,-44,21,-100,70,8,-17,2,-106,-41,133,94,113,-6,28,-68,-110,-83,150,29,6,45,-93,-42,61,-2,56,-95,-15,128,54,44,128,-148,-60,67,42,-2,70,-98,-20,156,60,65,-33,22,-120,-56,-51,34,-76,25,6,-16,-80,-46,17,20,-90,18,-30,-41,61,-59,60,142,36,-74,74,-91,-22,19,-91,-35,-52,3,24,-25,90,-33,-53,32,-92,-21,-33,52,-24,67,13,5,-2,71,-54,29,-26,74,-88,-42,-72,11,102,-39,36,-87,-3,41,23,19,3,-53,4,44,54,-39,5,-0,4,-13,86,-147,-133,-45,37,-7,4,-46,-73,8,10,61,-44,-5,-84,11,63,74,-40,-99,-25,23,104,-31,-48,-9,-99,17,99,76,77,50,-44,-22,91,112,27,63,-63,-17,-6,-77,103,41,-2,-18,21,-5,93,-22,145,59,-83,63,7,-56,55,5,106,-47,-8,19,-52,-12,79,120,-181,-12,108,34,-27,8,-149,102,-18,70,-96,-124,118,-87,-6,96,112,79,-92,-79,37,66,117,-47,51,4,56,98,64,-24,-8,15,6,77,-126,38,-36,72,-4,-86,-1,98,-23,-89,-50,-35,-3,83,63,42,-7,43,108,8,-13,-33,39,106,127,93,-68,-26,66,123,24,-35,-80,-8,-34,73,-88,-45,-175,-33,61,-125,-12,-47,-27,11,-3,75,-121,-97,60,85,-79,-17,-21,-44,-7,83,53,-35,27,62,-45,80,56,42,-6,83,-13,-2,69,-84,-49,13,-127,-25,19,89,-2,1,5,-104,135,24,46,-36,68,-35,-100,70,-35,-88,91,-41,87,9,85,-80,-52,17,-55,-9,-37,-54,-18,-71,21,-54,56,64,4,43,65,39,-94,42,30,-42,29,-41,-33,-159,11,60,-115,23,-10,-101,32,-42,57,-62,86,-35,-29,5,91,-65,40,-30,-10,-30,10,28,10,15,1,-75,82,134},\
+{4,-37,6,4,-89,-66,-9,-23,-41,54,47,-20,30,62,28,-40,-35,-95,43,-36,-77,-67,98,70,51,-46,-97,59,76,57,-75,55,-22,-17,35,-23,8,-81,-21,-81,-83,99,38,-1,-55,31,-10,-10,-88,-33,41,69,-80,7,-34,152,87,-65,61,53,-79,60,73,76,60,6,57,-129,105,-33,-49,40,26,-89,14,25,-108,-35,-11,-48,-56,15,55,42,80,54,1,53,22,72,55,25,77,-52,-27,-5,-64,-49,39,44,95,-96,10,7,14,110,4,-17,-65,79,23,9,-6,17,-46,-23,20,-25,26,-71,114,-54,-19,81,8,42,86,97,22,44,54,19,-27,41,32,17,6,41,-75,-83,112,44,118,-49,-12,-73,-64,-66,-98,-64,-42,16,67,-121,-41,63,-24,58,-21,-55,-50,-19,89,38,-139,-73,-27,-48,-55,-86,-123,68,57,93,-86,-4,-20,-110,-84,-36,23,-50,88,72,8,-50,19,-41,4,-72,-38,-23,52,51,-20,-85,-62,-56,99,-5,-18,70,-59,-76,-2,-72,-36,-29,-49,46,4,8,-30,-70,53,71,-92,-10,19,-65,-80,-80,-29,-13,85,-60,-15,118,-55,-3,-43,21,6,-39,84,-85,57,78,-52,-81,-78,-113,-117,61,21,37,-56,-147,-87,30,-61,1,15,2,66,-58,20,3,36,-40,-86,74,-24,-27,111,62,44,-88,-18,57,59,6,26,68,-36,-15,92,-79,-80,32,11,-94,38,-4,61,-74,-77,-82,16,31,0,-30,-19,11,-17,44,38,8,14,-41,93,91,-65,92,58,36,51,-71,-50,15,-93,-40,77,-97,-79,39,-51,98,-72,-61,-60,63,-85,7,88,-9,-63,21,-72,31,-38,-73,5,28,-68,84,-66,-19,-54,-60,-37,28,20,5,-11,-114,-68,-64,70,21,-36,-133,49,49,7,-72,33,-128,-9,39,88,38,79,-12,-91,-82,81,21,-35,12,60,38,-94,-40,22,28,-67,65,-10,-45,34,-26,-48,117,54,-91,123,46,14,-15,16,96,50,41,-42,-30,91,53,-2,45,-2,-12,-42,71,16,-58,-7,95,57,10,44,43,54,20,-64,8,-52,1,23,-15,49,-34,-30,-48,-47,57,59,46,38,-81,-55,-23,41,16,-1,-63,-39,-24,31,-59,-64,-7,92,122,83,14,-32,79,-37,-11,-47,-66,113,7,-13,87,102,85,-35,-12,114,129,106,2,-35,-100,27,47,33,40,-1,47,-31,-46,11,0,23,31,25,-63,111,-19,-53,6,-53,-77,-90,-36,29,-10,-85,44,25,11,-81,5,-86,-51,-122,42,3,30,27,60,-87,53,-72,87,37,-53,6,-7,-61,88,1,-99,-28,-81,-67,31,-82,15,12,64,84,32,-35,-68,-52,37,-78,92,42,-39,74,95,56,78,-82,-45,13,-70,63,89,61,45,37,-121,-57,80,79,-71,4,47,-4,-12,61,23,30,-24,10,46,-41,-35,108,-13,64,42,20,33,109,9,21,-19,-76,-29},\
+{-136,-83,-33,-112,6,55,37,-58,-115,-54,22,21,65,11,-90,37,73,-62,-74,61,99,15,37,-70,27,107,14,-73,-36,11,-4,73,108,-23,22,-44,104,-256,-108,-51,-10,1,52,145,9,132,-61,-188,-22,20,172,-14,36,26,6,71,110,5,3,-74,-53,55,59,28,91,-31,167,24,-19,-105,119,31,-15,57,36,76,-107,-14,-81,-2,71,50,87,-10,-74,35,-41,23,6,102,-52,42,-13,23,-77,-54,-52,-16,-39,-38,-39,-47,84,-90,85,-21,-66,-34,25,-143,-21,-46,-99,3,52,-53,46,94,34,47,130,114,-9,37,55,114,-17,-19,15,11,17,158,-58,47,76,48,-132,16,51,65,-33,-66,-31,-61,-126,64,-129,-76,-174,-39,42,73,111,-63,34,105,23,25,-24,42,69,123,21,-91,-77,103,-43,-38,43,101,116,-33,-32,-92,-41,-65,30,51,-38,53,-114,1,14,-101,-62,-23,-59,-15,11,9,38,65,-36,55,47,40,18,79,-19,21,-69,-93,40,-36,58,134,28,-21,-40,-32,-33,4,-86,-35,-0,-7,-256,132,-9,39,-148,30,40,-87,-48,-82,-28,25,-114,-96,-58,48,-92,62,66,73,-36,-107,26,126,72,35,6,-38,29,16,80,69,6,12,30,-33,-159,-99,107,-39,-98,56,90,44,45,-27,-14,25,54,47,4,92,-76,109,34,-25,-117,17,93,77,-4,128,-108,-128,-69,100,-84,-25,-201,26,-76,28,46,-76,-4,35,40,38,34,-8,-90,30,-87,6,56,-24,47,74,-50,18,75,-62,64,-62,51,87,-12,-99,-22,49,-54,35,-79,16,16,-6,-36,-40,9,-216,-82,-133,-49,75,2,-77,72,2,-51,-45,118,58,37,-90,-138,1,47,-40,99,117,-67,45,-47,-17,182,147,32,-127,-91,18,52,9,45,-31,40,104,103,100,23,-83,-85,-97,62,-35,-28,-77,-38,-115,-82,-34,37,20,-31,-69,-135,-125,19,122,97,-45,-63,30,-19,-75,133,-137,-71,21,-76,105,26,59,120,12,104,82,-106,30,130,69,118,-5,-86,-109,-17,-53,25,56,-59,-34,24,63,-90,-42,-27,-65,-71,-75,-114,-103,43,-6,82,55,77,-119,9,27,21,125,177,-9,5,-132,-19,41,-54,-20,-103,-86,-107,26,-16,-119,-163,-43,-85,-84,-22,-99,-71,53,53,83,-39,-88,16,72,125,109,-76,43,-10,-73,-118,-30,-125,-95,-66,82,77,97,2,-85,-34,18,-59,-38,63,-55,98,3,39,22,7,-82,19,38,-89,-68,3,-55,-63,112,21,21,-74,36,-78,24,-97,-13,17,76,70,-43,-78,-27,106,78,83,78,89,-103,-23,57,36,-18,9,-44,-14,-57,-37,22,-51,11,71,77,87,-24,2,-82,-85,15,-176,-124,77,219,69,-82,-103,-13,-32,124,-108,74,-52,-34,-38,-66,21,89,89,8,-102,71,54,-1,-67,68,-88,-95,-16,37,91,10,-13,-107,-128,31},\
+{-51,-24,64,113,2,-3,-18,-45,-13,-21,22,-12,9,29,-26,6,-35,-6,55,-72,114,-57,7,-25,32,-2,75,-94,-76,58,-39,-51,86,86,-29,-5,9,-25,-206,-420,72,55,90,75,66,-141,-95,50,-13,-47,139,-139,97,36,-57,30,93,-64,-28,-84,-43,31,-20,-133,-88,5,80,24,-87,-175,-28,83,-49,72,-44,-32,-82,-81,42,-57,64,77,-1,13,11,73,-60,-21,33,69,9,-85,-10,-32,-62,79,-6,17,-71,-68,-17,65,105,-11,20,99,-67,86,-26,79,-173,-103,-130,-2,49,12,39,-6,30,90,63,37,134,60,-33,74,-50,-55,152,46,-16,-130,-61,-15,81,-11,-5,-9,-18,-35,-60,5,-26,145,-43,-7,-167,91,-11,88,59,-83,-80,99,-77,70,107,-102,-161,149,-63,-86,45,62,-83,79,51,62,-1,-114,-75,45,52,47,-20,-1,162,122,-105,54,169,13,-108,-37,75,7,63,14,-94,-40,24,-46,31,35,-17,-114,10,-23,3,42,52,-2,-69,-37,63,42,-85,55,-36,-81,47,71,60,86,-20,-12,154,151,-153,-121,43,88,50,80,-229,-46,63,-46,97,45,-46,77,-13,-58,67,132,21,111,121,-99,-26,-81,-45,80,-10,-40,-82,42,-83,12,20,5,8,-14,-58,-106,62,95,37,4,13,-151,101,-24,64,-30,-64,-14,27,-64,122,36,-15,-134,69,-17,-48,-154,-95,-54,50,51,-102,50,-28,17,-97,21,-103,25,-53,51,-42,-19,-23,-32,0,-83,59,-50,32,37,-87,-1,-65,61,-50,-54,95,-78,10,-7,50,-68,14,-29,30,4,30,49,56,-92,51,-68,102,1,54,-50,135,174,6,26,-72,-251,64,-24,40,51,91,5,-156,4,67,25,37,53,14,28,37,-76,-5,55,-68,11,-62,-63,28,28,-10,-82,-76,-2,-104,-55,-136,7,-4,48,4,109,-20,95,-51,-44,-25,-32,-82,100,22,6,40,27,-44,-14,11,33,-17,-79,19,5,71,-47,68,-55,-7,69,61,93,-25,-123,-24,31,-54,-33,20,16,0,-38,-116,-64,-0,165,109,-19,28,53,-46,-12,-9,-15,-79,-97,78,-0,-25,35,60,-165,-85,1,98,35,-47,-101,40,103,93,-22,-44,-49,-65,143,-79,-20,-60,-64,-69,64,-66,-64,-107,18,76,37,97,-83,-65,91,148,121,-129,-71,4,-116,133,-32,-70,11,-17,-85,11,-13,55,-45,135,-37,37,-129,118,-66,25,69,79,49,26,36,-60,-88,-90,-70,-19,-28,-21,71,3,-71,59,116,-64,22,-30,71,-122,52,-74,2,34,31,-92,100,-32,20,-79,76,22,83,-79,31,-13,105,-60,-38,-90,-4,-68,21,-51,64,33,78,91,-40,-48,-53,-14,-60,-78,-83,-53,-18,-57,41,19,-96,120,47,-70,20,-49,106,13,-37,-22,61,72,-35,42,-6,45,16,52,-73,-18,-2,93,-28,39,-83,-82,50,20,-225,31,-126,-171,107},\
+{74,39,46,4,-82,102,-64,-73,-87,34,-14,-4,22,22,-56,35,7,46,-54,-80,-58,-16,27,-111,-64,52,107,30,-91,83,-16,-103,37,79,1,-92,3,-80,-44,-24,26,-16,35,-75,34,65,-6,14,-101,-5,72,-29,-20,-87,-29,-110,40,9,-67,40,152,-146,-104,-0,74,27,160,20,-34,30,-120,50,-72,63,-53,3,-15,-61,78,-7,79,2,95,-117,-70,-6,31,-22,39,63,-92,-7,-82,14,13,17,83,-13,44,-30,-60,5,-27,3,-76,28,81,-100,-17,-78,143,11,35,81,24,-58,96,-22,-24,-4,-30,-87,9,-78,10,-46,38,-115,-22,40,-32,54,13,-110,-40,-60,-76,-65,-9,-30,118,66,-12,7,8,-79,-12,-78,-28,111,-59,-7,-23,43,-49,-38,-136,-20,-47,-53,51,45,-74,-37,-43,-43,48,-22,37,135,113,116,85,-44,-72,-23,-26,34,58,111,28,107,88,40,-100,55,-30,44,-34,20,69,-57,-12,24,-40,35,-37,-86,-168,102,54,-8,-26,82,-102,100,88,-40,-93,104,-112,17,66,-1,-81,16,65,42,-0,0,2,-32,-100,-24,-42,-62,105,41,-47,-60,55,74,145,40,-22,91,90,87,114,-30,-107,5,-56,-71,-107,-48,-83,-91,-40,84,-11,-76,-31,108,25,-1,-53,15,13,-44,129,-53,-37,-76,-88,97,120,49,59,63,-154,26,-89,82,10,-5,-193,46,-38,-24,20,65,18,23,-71,59,40,22,93,18,53,77,38,-49,-44,-22,-88,49,2,-85,21,-4,-53,75,-29,56,14,26,-16,-22,9,-35,80,-71,48,86,79,1,-51,37,48,11,66,45,-63,54,80,-57,87,-21,-70,-67,9,33,-23,24,-120,37,-27,10,27,-49,-91,-78,-12,4,78,-31,92,2,-70,-5,59,55,-49,-149,-15,56,42,76,90,22,104,61,-44,-83,60,93,12,78,-91,-48,-9,130,-82,-9,21,25,-37,-69,-116,-64,29,137,69,-63,63,14,-23,-89,66,-23,-58,70,23,-75,78,-8,-18,48,5,65,-61,46,18,-31,-128,-14,-78,-46,-74,-34,-72,18,90,20,-75,-26,-53,-93,81,-52,82,-80,12,82,19,-47,75,-93,-5,100,-50,14,59,2,4,27,-49,-22,-18,90,77,-98,-45,-30,-134,-57,6,-72,69,-97,-24,33,-20,-67,13,70,-63,-67,73,-67,-19,74,85,48,-21,51,-54,109,-13,-53,-66,-69,-37,-72,95,-92,114,58,-111,-53,-92,-33,-38,-17,-4,17,-5,-89,29,-10,18,-49,-51,57,50,-42,27,-5,-34,103,-9,66,-84,48,-10,29,-80,-56,-53,59,-3,40,-60,26,66,-65,70,-88,37,80,-44,27,-6,7,-52,-25,-16,95,69,51,-8,-41,-68,11,8,-17,-58,7,97,114,60,82,78,22,11,-36,81,-96,97,77,70,-36,-133,-16,-60,82,-6,-70,-122,-73,81,-16,5,32,-98,25,-73,44,95,-29,52,-12,89,40},\
+{38,43,-25,42,45,32,-79,-62,36,6,-24,25,49,67,3,28,55,-1,-58,49,-79,77,10,68,98,-21,101,35,-19,-42,78,-57,85,-16,82,20,124,76,-54,-158,-33,29,-19,-10,-13,-9,-36,42,20,34,125,-22,25,-126,61,38,-43,-23,16,29,-40,-51,39,62,-25,-102,-107,-1,-19,18,18,-7,-90,-64,68,-90,-43,36,14,48,-59,54,-65,62,-45,66,-39,-26,90,-38,16,55,-45,-48,62,-10,29,-75,-96,-59,61,60,12,-40,26,-59,-67,-74,-68,-3,-39,-26,-41,75,-95,-82,-3,-75,4,-91,2,-53,67,53,24,88,42,-19,5,-9,33,-53,31,10,51,75,51,30,-130,38,33,101,125,-58,28,-10,-101,56,-102,46,17,-148,5,-10,-8,-40,45,12,34,18,93,-1,-9,56,55,30,-120,-54,-88,24,18,-37,48,-6,-10,82,-35,27,-35,-24,11,-75,42,7,70,-28,-112,-130,-9,-78,-24,-56,-83,57,32,-65,74,-9,28,96,-81,43,-12,-11,109,87,-24,2,-51,-36,-23,17,-101,39,17,24,125,112,-115,15,91,-35,72,-77,-61,-21,-10,51,-23,-95,-61,-7,-90,86,-46,115,25,38,-66,-76,29,27,-99,6,17,80,-92,34,35,72,104,26,-27,-21,-15,21,44,59,-86,-55,85,-48,-49,-13,-105,7,-26,100,0,80,79,36,13,-27,-66,-21,-49,-48,-68,69,52,-69,-49,105,-90,106,48,10,53,-82,-20,67,6,18,27,-47,-33,-68,13,-4,75,25,35,-31,-35,18,-74,-2,13,-51,3,-44,-75,-79,63,-86,-0,18,-33,-29,65,9,63,68,-15,-3,92,-63,-55,98,134,53,75,-82,-38,81,114,76,-6,83,-56,-120,-82,-137,87,-92,-51,-62,71,49,64,14,-94,-85,-35,0,56,-21,77,-60,-98,-13,-68,-38,88,11,24,-4,-2,21,118,5,106,17,-52,15,62,16,-71,12,-79,-13,-30,-48,75,47,-30,115,-22,95,-33,-122,-43,16,-55,-53,41,-29,-89,-101,62,-150,1,30,-69,-14,54,67,-14,13,162,-72,81,22,-48,-35,-8,16,-74,-17,41,12,30,28,-47,37,45,-18,35,-78,4,-49,-120,64,36,88,-39,85,29,-31,30,86,-105,22,66,76,116,-64,-33,-54,-63,25,-35,-99,-17,24,-16,-0,31,105,-69,-54,-94,36,51,-110,-52,-57,-98,78,70,82,35,-70,-51,41,-19,-6,36,7,55,103,71,-45,-67,-86,-14,-97,-99,-1,-66,-35,-46,2,34,102,4,-22,109,84,-52,99,49,-6,-5,64,39,-15,-69,34,72,68,34,78,-81,-104,-3,-25,-68,11,-63,73,-78,-9,-66,90,-54,-50,4,7,-33,-79,34,-55,6,-12,-84,9,-0,49,-32,-91,34,117,131,-35,-62,116,-36,-61,110,63,75,-58,18,77,42,92,1,-118,35,35,-25,-60,-5,-133,-23,40,43,-82,56,7,-26,91,-104,5},\
+{-8,-84,39,21,-20,-137,2,1,55,-30,21,-36,-59,-2,-72,-35,-7,44,96,-111,-103,-54,14,-110,-18,-22,-95,90,-34,4,16,22,-78,60,88,-19,-105,7,25,-39,-26,19,38,137,-115,-19,-99,-36,-44,178,9,51,-108,-86,36,-92,56,110,6,-67,-70,-141,50,120,4,93,-61,39,-17,-5,39,162,-70,-35,78,-7,-112,-53,-25,56,-18,90,-128,78,12,-32,97,-44,-21,-20,44,-83,89,-63,-134,87,-26,-28,-28,-48,39,54,104,-66,-13,-25,-88,9,13,102,80,-101,-93,42,-80,-18,-157,31,9,43,-119,5,25,-72,31,3,69,15,33,60,-40,71,7,-125,53,6,-33,16,124,29,-41,96,-51,-8,38,37,-63,92,-126,-0,-34,-26,82,-25,-30,-49,92,78,-40,-108,52,-40,76,-6,51,-155,-41,48,49,-101,20,8,37,-70,118,-133,-54,16,-31,-90,-32,-77,-46,36,-0,24,34,-115,-45,-0,-22,-84,33,-91,75,26,-14,-85,19,-96,-28,-90,-45,-93,-66,-27,-69,29,37,34,168,-55,31,75,-4,88,76,10,-55,112,6,-34,-17,-5,14,-130,-68,1,-2,12,75,-23,57,-89,-2,24,19,-121,74,-77,-47,-103,-73,39,61,-114,-102,14,-118,-32,74,2,49,94,-33,-8,91,-47,35,-73,23,-44,-68,-127,42,51,-5,-69,-72,4,-14,-68,-20,-26,82,-100,66,-54,25,69,92,23,13,19,-67,-16,-2,43,51,20,-54,-71,66,32,92,74,29,-53,5,-5,-68,60,86,5,45,-48,-44,-73,-66,-59,13,30,76,-41,-69,43,-23,80,42,-54,-70,35,-44,-92,-30,146,153,92,37,11,-105,-12,19,43,-92,-103,-90,114,-58,-78,80,-101,4,-1,6,-101,9,-58,-95,-22,-124,-28,-125,-53,-54,-20,-36,-83,95,-11,70,-30,56,72,98,14,25,-82,80,56,67,123,-11,12,60,4,-1,-49,-22,-41,39,-29,46,-75,-20,-62,67,17,-37,-8,-58,-32,105,0,122,1,-3,99,-64,33,-79,61,36,126,-47,-50,-54,-6,-19,-11,-85,88,-63,57,-123,-146,18,-103,-46,125,-118,-9,-2,10,97,-13,-27,92,5,19,-54,30,-16,-2,46,48,-10,-61,-31,104,25,3,90,-56,33,20,26,-67,157,15,46,-52,-56,-37,49,-84,-108,-6,70,90,-127,-114,27,126,3,-3,84,-145,-10,103,20,-79,60,-85,-52,-103,79,15,47,-75,75,-73,62,30,-113,-97,36,-7,100,-38,70,-29,-46,-33,-36,-30,109,12,-52,87,101,103,-48,-30,-64,47,45,-60,-41,122,37,-68,-72,-70,-102,-19,5,-18,-59,-45,-40,89,66,85,25,-63,-16,77,82,18,95,9,48,-64,23,3,-8,51,16,48,-16,89,143,7,39,0,-119,45,-48,-85,-88,-5,-22,-77,-45,-14,69,63,-47,123,68,-3,-50,9,-144,67,12,48,-52,-12,14,152,15,-80,-45,-48},\
+{-58,-59,92,34,-77,0,50,-18,12,52,66,62,-36,-103,88,45,39,73,94,-44,-55,3,45,-61,83,-28,37,-86,79,-89,32,-71,47,-83,68,-1,-8,26,13,34,-80,-66,-5,-91,35,-46,34,-43,59,-23,-14,-99,79,-78,88,117,5,52,-29,83,26,16,48,-73,-99,80,-41,60,-64,-56,43,64,-42,45,55,73,-64,-88,-62,21,-53,-14,21,-27,-93,58,47,-43,-29,44,-53,-19,-18,85,46,79,6,-69,91,-71,60,85,51,0,-70,86,27,40,89,45,-12,101,-9,-9,13,-79,24,71,18,-42,-47,-57,-90,82,15,26,-29,-22,-42,-55,92,36,71,18,-82,-80,-21,-44,-2,13,-132,38,137,-56,15,46,10,-111,-133,2,-91,-131,15,-31,-74,68,104,108,-49,48,-58,-61,-67,18,-18,94,-87,-85,-65,-61,-0,15,56,-10,2,17,-98,-75,-49,-92,-45,32,-44,-68,46,56,-85,-0,-53,-2,-114,58,51,-15,93,-86,-77,101,45,96,-9,26,16,24,-58,11,-82,-73,51,-57,111,-19,40,-75,-18,-80,-0,9,9,54,-79,-101,-51,11,-90,37,22,-88,65,69,81,79,-16,-57,97,23,-93,15,-40,-33,98,72,50,-62,-55,50,13,-55,-28,-36,16,61,-8,70,-44,40,-55,-64,85,44,-77,-30,-62,75,-42,-10,-61,-39,-94,58,6,21,30,-6,-18,3,59,-40,40,-31,33,-72,16,-44,56,51,60,31,17,-12,-18,-20,7,80,-74,23,-0,93,-27,79,-72,49,-46,91,15,-86,6,-3,90,46,-87,-75,-49,-65,64,-11,15,89,27,32,-28,-81,12,87,20,-124,19,-83,48,44,-43,29,53,-56,-30,-111,3,-58,-34,-15,22,-101,85,70,-5,-34,-43,75,-51,-58,-28,-39,-120,-74,55,6,28,6,61,-115,36,103,118,-50,17,-2,-9,-2,-72,36,28,-42,74,-10,-24,79,-4,-18,40,-88,62,65,41,24,2,11,68,21,-55,74,0,1,77,78,-126,17,-35,-58,34,50,103,76,-36,-88,21,54,-7,-122,-5,-25,-16,-48,67,-77,30,-34,-30,-27,77,-27,-1,-84,24,-67,62,-100,56,-84,92,27,58,-94,-33,21,67,99,56,-48,26,-33,-29,70,72,-2,19,57,106,-10,-78,-61,-50,66,112,95,89,-77,-77,20,-21,3,-123,-81,9,-110,112,17,-145,-64,39,95,78,54,-60,-19,-89,-59,-45,47,-64,-59,33,-40,-24,-52,-85,-19,30,57,7,36,14,17,-53,-81,-90,-7,-36,51,-17,-58,1,-49,-94,82,82,-76,-56,-14,-75,64,-28,63,71,-54,63,22,-51,82,-30,-83,73,42,-93,83,48,-63,46,18,6,21,-85,-35,-6,31,59,94,-70,45,-65,48,14,63,11,9,76,-10,37,-70,12,9,-53,-99,-86,81,-16,-45,32,-2,-49,46,-26,-62,-40,114,-76,37,45,61,-43,14,-38,-41,-59,-75,-46,-93},\
+{62,-107,5,14,-66,32,60,40,-100,-83,60,-9,-19,105,-118,83,-96,120,-56,-5,43,-105,-29,90,35,24,-32,35,122,47,25,89,14,-54,0,12,51,121,186,215,42,64,92,10,-51,30,-15,72,-40,-61,-119,-21,-66,-113,67,-106,66,-9,-27,-70,46,-85,-40,134,-32,-30,26,-3,-82,19,-140,-171,-31,46,36,-87,-9,13,-42,-41,57,65,10,-41,-2,-9,22,48,67,-87,-17,-67,25,30,-60,-41,-7,26,40,-20,63,-54,54,101,-38,-34,-5,-74,52,91,-13,9,4,-36,33,86,-61,-46,-58,-7,122,73,-184,-65,-55,45,44,62,-30,-55,117,41,47,-128,23,24,140,-119,85,-99,14,33,-114,-2,114,56,173,-6,229,66,94,84,24,4,97,93,-96,-98,-66,6,-30,48,-136,-3,-40,-192,-59,-15,44,75,-71,-172,-103,-101,17,-34,-101,-127,-43,-24,-51,9,218,-49,-42,84,-69,-9,-22,-18,39,-83,-8,-5,-109,-108,-60,17,-11,-19,24,-113,53,-2,18,-26,49,-78,-64,88,-97,-145,-13,-79,52,-94,88,-179,188,103,-80,32,7,-37,-19,-172,84,91,78,-52,12,-184,48,75,-132,-101,42,-137,-113,43,146,-40,-58,-89,-3,122,-15,-11,-8,20,-2,67,12,-18,61,141,-0,-33,20,-65,69,46,-38,73,118,16,41,-54,-57,54,-9,61,23,91,-8,45,30,-57,34,-38,-119,15,-36,-176,37,-28,-22,74,-93,35,-59,55,63,81,25,-74,-9,-15,-69,-31,47,-70,-27,22,48,-30,8,4,27,76,-21,-32,99,73,-94,47,-19,71,47,76,13,-52,21,38,-6,59,-108,24,-213,-49,83,117,-52,74,-42,4,111,128,-36,26,54,128,70,-24,-89,12,47,12,31,-97,-156,-18,-51,94,177,77,-19,39,-98,104,114,14,58,25,32,-49,81,-145,-22,12,62,28,94,-58,-91,-86,94,-142,-43,-9,69,-46,-0,22,41,7,50,53,-105,94,-116,146,-7,32,-17,-133,-12,-160,-176,38,108,52,68,31,-129,-142,-75,-18,-4,88,-112,-151,-148,70,151,-11,-34,2,58,-9,143,8,97,75,51,-6,104,122,151,-94,-41,-34,55,-66,77,-59,-94,50,183,-46,95,-36,-54,147,174,80,-54,35,11,55,164,10,-100,-52,67,101,-94,34,-21,91,130,115,-50,100,-205,-20,128,127,-89,-154,120,58,-49,74,6,-92,48,-17,-68,-8,104,-17,-41,-12,93,-28,67,112,71,14,15,-22,31,-7,133,-4,-60,50,-46,-109,-8,-178,9,-9,-19,29,-54,29,171,-80,63,-42,75,-59,-45,-43,-84,40,-31,-8,-94,29,-50,81,12,63,13,-5,-59,62,-64,85,24,-57,-43,-60,-31,1,23,24,14,-63,22,-23,-44,123,146,-81,-31,14,-89,-35,32,-34,50,22,69,64,-7,-11,-16,88,50,-75,63,-58,174,35,-17,-20,34,-20,-20,-71,106,21},\
+{59,-18,48,-28,64,-56,-70,-22,75,83,63,-95,-54,-66,-40,78,-19,80,3,63,-47,-26,-55,81,88,61,26,-69,-15,-11,-72,-42,-15,-51,-40,-64,-20,-105,20,-56,26,-15,39,48,-29,72,-3,-80,-60,36,9,-43,58,-51,48,-71,-30,-83,32,44,-73,-77,13,-44,-60,-39,-23,-49,-27,84,13,83,45,64,-43,-55,-12,-79,-28,83,-41,-0,101,-83,5,11,66,-47,70,13,19,-80,-47,13,30,-43,90,97,-9,-13,-21,35,-58,22,-88,-12,61,5,-88,97,105,-45,75,-46,45,-87,107,-50,-76,33,-31,54,72,3,-50,-39,-34,4,71,-58,61,55,56,97,76,-30,34,-35,77,-58,54,-62,-5,71,16,-34,10,-80,24,-82,27,-23,42,-68,-54,-7,29,0,30,-96,77,47,62,14,-80,91,80,58,-24,-39,-13,89,81,-18,-88,5,-46,20,70,9,82,-38,-69,-57,37,68,29,14,-44,-72,77,2,-58,-2,-44,19,34,-87,-91,-76,-36,69,19,54,-103,-17,87,-27,-50,-22,-25,32,-75,-96,52,6,42,19,13,-2,35,-77,27,44,96,-86,1,6,-3,5,85,-58,-39,-47,-68,-42,27,92,-13,-52,-59,60,60,-80,-35,-42,-61,11,-38,-50,0,-73,-71,83,5,-55,58,-33,-25,20,-26,36,-74,39,41,-55,-22,66,-93,87,-87,-15,-98,15,63,66,-50,89,53,11,-62,-81,-10,72,-64,83,12,-30,-49,15,-47,7,68,-42,54,-27,-60,75,10,40,83,18,42,22,5,-10,-80,3,49,-40,-60,11,39,-84,79,85,16,18,84,9,21,-47,14,82,90,46,-70,-19,-92,-69,-83,-95,85,60,42,44,24,19,-82,61,-52,-63,-21,19,55,-94,17,83,-16,1,-90,9,-75,21,72,-92,-43,-36,-4,-62,70,-9,-43,-26,53,91,-79,-73,93,-42,11,61,-14,-42,-99,-44,14,13,18,4,3,-81,79,-53,66,78,-18,54,56,10,-41,28,46,-92,-49,62,5,-34,51,74,42,-70,-28,68,-58,-54,-70,-7,85,-7,-74,32,85,16,87,-107,16,-14,23,49,-79,-39,-75,-49,-104,69,-91,-93,-76,-11,-76,42,40,74,-5,-27,-61,65,-56,50,22,-53,-67,-55,88,18,29,43,18,-69,39,-107,-29,0,-42,26,-98,-32,17,-94,-109,-55,-16,70,-63,4,9,-73,75,54,-16,48,-6,-78,24,34,-78,79,86,-37,-88,84,-49,6,-20,-25,-78,-28,-95,-54,76,62,-51,74,-90,73,78,-24,-59,57,-17,-42,-42,-86,-35,-53,88,36,-49,-23,10,-72,49,-24,87,66,-15,-81,8,72,16,-52,-51,48,-54,84,-2,82,8,-62,38,51,87,72,-55,37,-32,36,82,-75,49,30,-23,-40,-74,43,-24,85,91,22,84,76,-69,116,-16,19,-80,-16,79,85,-106,-29,-80,18,-38,21,-77,19,-68,67,48,-65,-87,-39,-91,-22}};
 
-	//read_file_fc(filename, outputNum, inputNum, FcL);
-	FcL->wData[0][0]=131;
-FcL->wData[0][1]=-212;
-FcL->wData[0][2]=99;
-FcL->wData[0][3]=109;
-FcL->wData[0][4]=65;
-FcL->wData[0][5]=-103;
-FcL->wData[0][6]=-425;
-FcL->wData[0][7]=69;
-FcL->wData[0][8]=78;
-FcL->wData[0][9]=-357;
-FcL->wData[0][10]=-66;
-FcL->wData[0][11]=204;
-FcL->wData[0][12]=341;
-FcL->wData[0][13]=-344;
-FcL->wData[0][14]=144;
-FcL->wData[0][15]=-110;
-FcL->wData[0][16]=-220;
-FcL->wData[0][17]=87;
-FcL->wData[0][18]=-38;
-FcL->wData[0][19]=-172;
-FcL->wData[0][20]=-43;
-FcL->wData[0][21]=83;
-FcL->wData[0][22]=200;
-FcL->wData[0][23]=150;
-FcL->wData[0][24]=-153;
-FcL->wData[0][25]=-187;
-FcL->wData[0][26]=27;
-FcL->wData[0][27]=-66;
-FcL->wData[0][28]=33;
-FcL->wData[0][29]=-89;
-FcL->wData[0][30]=-53;
-FcL->wData[0][31]=61;
-FcL->wData[0][32]=76;
-FcL->wData[0][33]=-200;
-FcL->wData[0][34]=141;
-FcL->wData[0][35]=28;
-FcL->wData[0][36]=-101;
-FcL->wData[0][37]=84;
-FcL->wData[0][38]=137;
-FcL->wData[0][39]=102;
-FcL->wData[0][40]=-28;
-FcL->wData[0][41]=-21;
-FcL->wData[0][42]=88;
-FcL->wData[0][43]=-148;
-FcL->wData[0][44]=101;
-FcL->wData[0][45]=37;
-FcL->wData[0][46]=311;
-FcL->wData[0][47]=-203;
-FcL->wData[0][48]=-198;
-FcL->wData[0][49]=-38;
-FcL->wData[0][50]=57;
-FcL->wData[0][51]=-121;
-FcL->wData[0][52]=118;
-FcL->wData[0][53]=-162;
-FcL->wData[0][54]=26;
-FcL->wData[0][55]=-118;
-FcL->wData[0][56]=259;
-FcL->wData[0][57]=-114;
-FcL->wData[0][58]=50;
-FcL->wData[0][59]=-164;
-FcL->wData[0][60]=163;
-FcL->wData[0][61]=121;
-FcL->wData[0][62]=174;
-FcL->wData[0][63]=57;
-FcL->wData[0][64]=269;
-FcL->wData[0][65]=200;
-FcL->wData[0][66]=-185;
-FcL->wData[0][67]=-124;
-FcL->wData[0][68]=62;
-FcL->wData[0][69]=86;
-FcL->wData[0][70]=85;
-FcL->wData[0][71]=84;
-FcL->wData[0][72]=196;
-FcL->wData[0][73]=226;
-FcL->wData[0][74]=77;
-FcL->wData[0][75]=-1;
-FcL->wData[0][76]=-169;
-FcL->wData[0][77]=-15;
-FcL->wData[0][78]=143;
-FcL->wData[0][79]=-78;
-FcL->wData[0][80]=185;
-FcL->wData[1][0]=-89;
-FcL->wData[1][1]=-42;
-FcL->wData[1][2]=25;
-FcL->wData[1][3]=-213;
-FcL->wData[1][4]=-178;
-FcL->wData[1][5]=242;
-FcL->wData[1][6]=15;
-FcL->wData[1][7]=251;
-FcL->wData[1][8]=-116;
-FcL->wData[1][9]=-114;
-FcL->wData[1][10]=71;
-FcL->wData[1][11]=45;
-FcL->wData[1][12]=141;
-FcL->wData[1][13]=-347;
-FcL->wData[1][14]=121;
-FcL->wData[1][15]=-158;
-FcL->wData[1][16]=-25;
-FcL->wData[1][17]=217;
-FcL->wData[1][18]=-174;
-FcL->wData[1][19]=26;
-FcL->wData[1][20]=79;
-FcL->wData[1][21]=351;
-FcL->wData[1][22]=200;
-FcL->wData[1][23]=-346;
-FcL->wData[1][24]=-17;
-FcL->wData[1][25]=61;
-FcL->wData[1][26]=250;
-FcL->wData[1][27]=-204;
-FcL->wData[1][28]=-35;
-FcL->wData[1][29]=70;
-FcL->wData[1][30]=74;
-FcL->wData[1][31]=53;
-FcL->wData[1][32]=111;
-FcL->wData[1][33]=134;
-FcL->wData[1][34]=133;
-FcL->wData[1][35]=167;
-FcL->wData[1][36]=119;
-FcL->wData[1][37]=171;
-FcL->wData[1][38]=-134;
-FcL->wData[1][39]=-199;
-FcL->wData[1][40]=7;
-FcL->wData[1][41]=-257;
-FcL->wData[1][42]=71;
-FcL->wData[1][43]=104;
-FcL->wData[1][44]=-147;
-FcL->wData[1][45]=116;
-FcL->wData[1][46]=149;
-FcL->wData[1][47]=-132;
-FcL->wData[1][48]=47;
-FcL->wData[1][49]=-90;
-FcL->wData[1][50]=256;
-FcL->wData[1][51]=-106;
-FcL->wData[1][52]=59;
-FcL->wData[1][53]=137;
-FcL->wData[1][54]=15;
-FcL->wData[1][55]=-49;
-FcL->wData[1][56]=-131;
-FcL->wData[1][57]=-35;
-FcL->wData[1][58]=323;
-FcL->wData[1][59]=-121;
-FcL->wData[1][60]=164;
-FcL->wData[1][61]=-68;
-FcL->wData[1][62]=-211;
-FcL->wData[1][63]=-143;
-FcL->wData[1][64]=-262;
-FcL->wData[1][65]=-50;
-FcL->wData[1][66]=-124;
-FcL->wData[1][67]=211;
-FcL->wData[1][68]=26;
-FcL->wData[1][69]=-207;
-FcL->wData[1][70]=260;
-FcL->wData[1][71]=-252;
-FcL->wData[1][72]=-130;
-FcL->wData[1][73]=-346;
-FcL->wData[1][74]=108;
-FcL->wData[1][75]=-34;
-FcL->wData[1][76]=28;
-FcL->wData[1][77]=-7;
-FcL->wData[1][78]=-178;
-FcL->wData[1][79]=16;
-FcL->wData[1][80]=-170;
-FcL->wData[2][0]=88;
-FcL->wData[2][1]=-23;
-FcL->wData[2][2]=146;
-FcL->wData[2][3]=250;
-FcL->wData[2][4]=501;
-FcL->wData[2][5]=-70;
-FcL->wData[2][6]=186;
-FcL->wData[2][7]=102;
-FcL->wData[2][8]=16;
-FcL->wData[2][9]=98;
-FcL->wData[2][10]=65;
-FcL->wData[2][11]=-91;
-FcL->wData[2][12]=-5;
-FcL->wData[2][13]=-74;
-FcL->wData[2][14]=-100;
-FcL->wData[2][15]=34;
-FcL->wData[2][16]=166;
-FcL->wData[2][17]=-230;
-FcL->wData[2][18]=181;
-FcL->wData[2][19]=108;
-FcL->wData[2][20]=136;
-FcL->wData[2][21]=-605;
-FcL->wData[2][22]=99;
-FcL->wData[2][23]=-81;
-FcL->wData[2][24]=39;
-FcL->wData[2][25]=62;
-FcL->wData[2][26]=-99;
-FcL->wData[2][27]=-171;
-FcL->wData[2][28]=138;
-FcL->wData[2][29]=-64;
-FcL->wData[2][30]=41;
-FcL->wData[2][31]=-73;
-FcL->wData[2][32]=-103;
-FcL->wData[2][33]=-199;
-FcL->wData[2][34]=-85;
-FcL->wData[2][35]=78;
-FcL->wData[2][36]=225;
-FcL->wData[2][37]=17;
-FcL->wData[2][38]=394;
-FcL->wData[2][39]=-196;
-FcL->wData[2][40]=-296;
-FcL->wData[2][41]=-90;
-FcL->wData[2][42]=-179;
-FcL->wData[2][43]=17;
-FcL->wData[2][44]=201;
-FcL->wData[2][45]=-27;
-FcL->wData[2][46]=42;
-FcL->wData[2][47]=76;
-FcL->wData[2][48]=295;
-FcL->wData[2][49]=53;
-FcL->wData[2][50]=-157;
-FcL->wData[2][51]=152;
-FcL->wData[2][52]=-11;
-FcL->wData[2][53]=260;
-FcL->wData[2][54]=-12;
-FcL->wData[2][55]=-511;
-FcL->wData[2][56]=159;
-FcL->wData[2][57]=67;
-FcL->wData[2][58]=-120;
-FcL->wData[2][59]=-58;
-FcL->wData[2][60]=-139;
-FcL->wData[2][61]=332;
-FcL->wData[2][62]=-107;
-FcL->wData[2][63]=-256;
-FcL->wData[2][64]=-391;
-FcL->wData[2][65]=203;
-FcL->wData[2][66]=197;
-FcL->wData[2][67]=-15;
-FcL->wData[2][68]=10;
-FcL->wData[2][69]=8;
-FcL->wData[2][70]=-77;
-FcL->wData[2][71]=88;
-FcL->wData[2][72]=-148;
-FcL->wData[2][73]=-220;
-FcL->wData[2][74]=-316;
-FcL->wData[2][75]=211;
-FcL->wData[2][76]=-240;
-FcL->wData[2][77]=-35;
-FcL->wData[2][78]=89;
-FcL->wData[2][79]=-240;
-FcL->wData[2][80]=-20;
-FcL->wData[3][0]=46;
-FcL->wData[3][1]=49;
-FcL->wData[3][2]=-109;
-FcL->wData[3][3]=-746;
-FcL->wData[3][4]=-259;
-FcL->wData[3][5]=272;
-FcL->wData[3][6]=-172;
-FcL->wData[3][7]=26;
-FcL->wData[3][8]=-171;
-FcL->wData[3][9]=105;
-FcL->wData[3][10]=48;
-FcL->wData[3][11]=140;
-FcL->wData[3][12]=-104;
-FcL->wData[3][13]=-358;
-FcL->wData[3][14]=-10;
-FcL->wData[3][15]=-55;
-FcL->wData[3][16]=130;
-FcL->wData[3][17]=-54;
-FcL->wData[3][18]=-302;
-FcL->wData[3][19]=-35;
-FcL->wData[3][20]=44;
-FcL->wData[3][21]=995;
-FcL->wData[3][22]=-194;
-FcL->wData[3][23]=-21;
-FcL->wData[3][24]=-214;
-FcL->wData[3][25]=-20;
-FcL->wData[3][26]=51;
-FcL->wData[3][27]=-285;
-FcL->wData[3][28]=-131;
-FcL->wData[3][29]=351;
-FcL->wData[3][30]=-148;
-FcL->wData[3][31]=-57;
-FcL->wData[3][32]=261;
-FcL->wData[3][33]=-329;
-FcL->wData[3][34]=289;
-FcL->wData[3][35]=165;
-FcL->wData[3][36]=-179;
-FcL->wData[3][37]=-201;
-FcL->wData[3][38]=3;
-FcL->wData[3][39]=-24;
-FcL->wData[3][40]=-183;
-FcL->wData[3][41]=83;
-FcL->wData[3][42]=39;
-FcL->wData[3][43]=-52;
-FcL->wData[3][44]=88;
-FcL->wData[3][45]=129;
-FcL->wData[3][46]=-196;
-FcL->wData[3][47]=-164;
-FcL->wData[3][48]=285;
-FcL->wData[3][49]=140;
-FcL->wData[3][50]=28;
-FcL->wData[3][51]=-159;
-FcL->wData[3][52]=73;
-FcL->wData[3][53]=-133;
-FcL->wData[3][54]=-97;
-FcL->wData[3][55]=54;
-FcL->wData[3][56]=335;
-FcL->wData[3][57]=-62;
-FcL->wData[3][58]=191;
-FcL->wData[3][59]=-161;
-FcL->wData[3][60]=-129;
-FcL->wData[3][61]=23;
-FcL->wData[3][62]=-84;
-FcL->wData[3][63]=-80;
-FcL->wData[3][64]=95;
-FcL->wData[3][65]=218;
-FcL->wData[3][66]=58;
-FcL->wData[3][67]=-112;
-FcL->wData[3][68]=127;
-FcL->wData[3][69]=-39;
-FcL->wData[3][70]=3;
-FcL->wData[3][71]=118;
-FcL->wData[3][72]=71;
-FcL->wData[3][73]=15;
-FcL->wData[3][74]=87;
-FcL->wData[3][75]=-126;
-FcL->wData[3][76]=-33;
-FcL->wData[3][77]=-122;
-FcL->wData[3][78]=127;
-FcL->wData[3][79]=242;
-FcL->wData[3][80]=-66;
-FcL->wData[4][0]=72;
-FcL->wData[4][1]=68;
-FcL->wData[4][2]=-103;
-FcL->wData[4][3]=66;
-FcL->wData[4][4]=-295;
-FcL->wData[4][5]=-46;
-FcL->wData[4][6]=-344;
-FcL->wData[4][7]=6;
-FcL->wData[4][8]=102;
-FcL->wData[4][9]=156;
-FcL->wData[4][10]=-16;
-FcL->wData[4][11]=76;
-FcL->wData[4][12]=-149;
-FcL->wData[4][13]=-1;
-FcL->wData[4][14]=136;
-FcL->wData[4][15]=120;
-FcL->wData[4][16]=114;
-FcL->wData[4][17]=79;
-FcL->wData[4][18]=-156;
-FcL->wData[4][19]=-140;
-FcL->wData[4][20]=-191;
-FcL->wData[4][21]=188;
-FcL->wData[4][22]=-123;
-FcL->wData[4][23]=-183;
-FcL->wData[4][24]=-81;
-FcL->wData[4][25]=-36;
-FcL->wData[4][26]=90;
-FcL->wData[4][27]=-168;
-FcL->wData[4][28]=-104;
-FcL->wData[4][29]=-118;
-FcL->wData[4][30]=69;
-FcL->wData[4][31]=255;
-FcL->wData[4][32]=28;
-FcL->wData[4][33]=278;
-FcL->wData[4][34]=123;
-FcL->wData[4][35]=10;
-FcL->wData[4][36]=-11;
-FcL->wData[4][37]=-136;
-FcL->wData[4][38]=-299;
-FcL->wData[4][39]=78;
-FcL->wData[4][40]=89;
-FcL->wData[4][41]=-125;
-FcL->wData[4][42]=-208;
-FcL->wData[4][43]=33;
-FcL->wData[4][44]=-273;
-FcL->wData[4][45]=70;
-FcL->wData[4][46]=-71;
-FcL->wData[4][47]=-206;
-FcL->wData[4][48]=-510;
-FcL->wData[4][49]=-223;
-FcL->wData[4][50]=-6;
-FcL->wData[4][51]=-76;
-FcL->wData[4][52]=-6;
-FcL->wData[4][53]=-332;
-FcL->wData[4][54]=66;
-FcL->wData[4][55]=-54;
-FcL->wData[4][56]=-96;
-FcL->wData[4][57]=9;
-FcL->wData[4][58]=5;
-FcL->wData[4][59]=283;
-FcL->wData[4][60]=344;
-FcL->wData[4][61]=-218;
-FcL->wData[4][62]=89;
-FcL->wData[4][63]=85;
-FcL->wData[4][64]=460;
-FcL->wData[4][65]=161;
-FcL->wData[4][66]=-59;
-FcL->wData[4][67]=86;
-FcL->wData[4][68]=-170;
-FcL->wData[4][69]=216;
-FcL->wData[4][70]=250;
-FcL->wData[4][71]=279;
-FcL->wData[4][72]=241;
-FcL->wData[4][73]=12;
-FcL->wData[4][74]=156;
-FcL->wData[4][75]=2;
-FcL->wData[4][76]=55;
-FcL->wData[4][77]=-4;
-FcL->wData[4][78]=-17;
-FcL->wData[4][79]=162;
-FcL->wData[4][80]=84;
-FcL->wData[5][0]=-116;
-FcL->wData[5][1]=-283;
-FcL->wData[5][2]=-41;
-FcL->wData[5][3]=177;
-FcL->wData[5][4]=188;
-FcL->wData[5][5]=-401;
-FcL->wData[5][6]=-183;
-FcL->wData[5][7]=-207;
-FcL->wData[5][8]=-101;
-FcL->wData[5][9]=149;
-FcL->wData[5][10]=38;
-FcL->wData[5][11]=265;
-FcL->wData[5][12]=184;
-FcL->wData[5][13]=97;
-FcL->wData[5][14]=63;
-FcL->wData[5][15]=-147;
-FcL->wData[5][16]=-123;
-FcL->wData[5][17]=-58;
-FcL->wData[5][18]=32;
-FcL->wData[5][19]=82;
-FcL->wData[5][20]=80;
-FcL->wData[5][21]=-341;
-FcL->wData[5][22]=-16;
-FcL->wData[5][23]=-109;
-FcL->wData[5][24]=-94;
-FcL->wData[5][25]=0;
-FcL->wData[5][26]=221;
-FcL->wData[5][27]=-136;
-FcL->wData[5][28]=-14;
-FcL->wData[5][29]=161;
-FcL->wData[5][30]=-445;
-FcL->wData[5][31]=-26;
-FcL->wData[5][32]=252;
-FcL->wData[5][33]=165;
-FcL->wData[5][34]=-169;
-FcL->wData[5][35]=130;
-FcL->wData[5][36]=-175;
-FcL->wData[5][37]=-262;
-FcL->wData[5][38]=115;
-FcL->wData[5][39]=5;
-FcL->wData[5][40]=-74;
-FcL->wData[5][41]=163;
-FcL->wData[5][42]=174;
-FcL->wData[5][43]=42;
-FcL->wData[5][44]=109;
-FcL->wData[5][45]=-7;
-FcL->wData[5][46]=-293;
-FcL->wData[5][47]=-64;
-FcL->wData[5][48]=-7;
-FcL->wData[5][49]=365;
-FcL->wData[5][50]=-162;
-FcL->wData[5][51]=-91;
-FcL->wData[5][52]=-282;
-FcL->wData[5][53]=-20;
-FcL->wData[5][54]=74;
-FcL->wData[5][55]=147;
-FcL->wData[5][56]=19;
-FcL->wData[5][57]=123;
-FcL->wData[5][58]=19;
-FcL->wData[5][59]=-156;
-FcL->wData[5][60]=-75;
-FcL->wData[5][61]=174;
-FcL->wData[5][62]=-76;
-FcL->wData[5][63]=-21;
-FcL->wData[5][64]=35;
-FcL->wData[5][65]=-150;
-FcL->wData[5][66]=209;
-FcL->wData[5][67]=-76;
-FcL->wData[5][68]=304;
-FcL->wData[5][69]=-118;
-FcL->wData[5][70]=78;
-FcL->wData[5][71]=69;
-FcL->wData[5][72]=-287;
-FcL->wData[5][73]=50;
-FcL->wData[5][74]=-175;
-FcL->wData[5][75]=-230;
-FcL->wData[5][76]=190;
-FcL->wData[5][77]=150;
-FcL->wData[5][78]=128;
-FcL->wData[5][79]=88;
-FcL->wData[5][80]=62;
-FcL->wData[6][0]=-90;
-FcL->wData[6][1]=132;
-FcL->wData[6][2]=165;
-FcL->wData[6][3]=156;
-FcL->wData[6][4]=-40;
-FcL->wData[6][5]=11;
-FcL->wData[6][6]=301;
-FcL->wData[6][7]=-28;
-FcL->wData[6][8]=-1;
-FcL->wData[6][9]=77;
-FcL->wData[6][10]=-177;
-FcL->wData[6][11]=6;
-FcL->wData[6][12]=161;
-FcL->wData[6][13]=168;
-FcL->wData[6][14]=-237;
-FcL->wData[6][15]=-39;
-FcL->wData[6][16]=-212;
-FcL->wData[6][17]=258;
-FcL->wData[6][18]=156;
-FcL->wData[6][19]=-102;
-FcL->wData[6][20]=116;
-FcL->wData[6][21]=97;
-FcL->wData[6][22]=33;
-FcL->wData[6][23]=66;
-FcL->wData[6][24]=274;
-FcL->wData[6][25]=-23;
-FcL->wData[6][26]=-91;
-FcL->wData[6][27]=170;
-FcL->wData[6][28]=-8;
-FcL->wData[6][29]=-310;
-FcL->wData[6][30]=50;
-FcL->wData[6][31]=-130;
-FcL->wData[6][32]=-162;
-FcL->wData[6][33]=0;
-FcL->wData[6][34]=-103;
-FcL->wData[6][35]=-301;
-FcL->wData[6][36]=-30;
-FcL->wData[6][37]=318;
-FcL->wData[6][38]=-157;
-FcL->wData[6][39]=-155;
-FcL->wData[6][40]=98;
-FcL->wData[6][41]=-59;
-FcL->wData[6][42]=118;
-FcL->wData[6][43]=223;
-FcL->wData[6][44]=-269;
-FcL->wData[6][45]=-101;
-FcL->wData[6][46]=146;
-FcL->wData[6][47]=-36;
-FcL->wData[6][48]=-9;
-FcL->wData[6][49]=209;
-FcL->wData[6][50]=21;
-FcL->wData[6][51]=137;
-FcL->wData[6][52]=64;
-FcL->wData[6][53]=2;
-FcL->wData[6][54]=-113;
-FcL->wData[6][55]=-170;
-FcL->wData[6][56]=141;
-FcL->wData[6][57]=-167;
-FcL->wData[6][58]=156;
-FcL->wData[6][59]=114;
-FcL->wData[6][60]=-30;
-FcL->wData[6][61]=143;
-FcL->wData[6][62]=92;
-FcL->wData[6][63]=169;
-FcL->wData[6][64]=129;
-FcL->wData[6][65]=62;
-FcL->wData[6][66]=-119;
-FcL->wData[6][67]=-137;
-FcL->wData[6][68]=186;
-FcL->wData[6][69]=60;
-FcL->wData[6][70]=-306;
-FcL->wData[6][71]=103;
-FcL->wData[6][72]=-164;
-FcL->wData[6][73]=361;
-FcL->wData[6][74]=-114;
-FcL->wData[6][75]=32;
-FcL->wData[6][76]=-291;
-FcL->wData[6][77]=258;
-FcL->wData[6][78]=-177;
-FcL->wData[6][79]=49;
-FcL->wData[6][80]=34;
-FcL->wData[7][0]=-193;
-FcL->wData[7][1]=-422;
-FcL->wData[7][2]=-277;
-FcL->wData[7][3]=-246;
-FcL->wData[7][4]=162;
-FcL->wData[7][5]=25;
-FcL->wData[7][6]=5;
-FcL->wData[7][7]=-226;
-FcL->wData[7][8]=-237;
-FcL->wData[7][9]=190;
-FcL->wData[7][10]=-191;
-FcL->wData[7][11]=99;
-FcL->wData[7][12]=-230;
-FcL->wData[7][13]=-84;
-FcL->wData[7][14]=-52;
-FcL->wData[7][15]=256;
-FcL->wData[7][16]=13;
-FcL->wData[7][17]=-232;
-FcL->wData[7][18]=-219;
-FcL->wData[7][19]=71;
-FcL->wData[7][20]=106;
-FcL->wData[7][21]=64;
-FcL->wData[7][22]=-16;
-FcL->wData[7][23]=230;
-FcL->wData[7][24]=72;
-FcL->wData[7][25]=-86;
-FcL->wData[7][26]=-186;
-FcL->wData[7][27]=-21;
-FcL->wData[7][28]=37;
-FcL->wData[7][29]=-215;
-FcL->wData[7][30]=-176;
-FcL->wData[7][31]=-391;
-FcL->wData[7][32]=176;
-FcL->wData[7][33]=-120;
-FcL->wData[7][34]=199;
-FcL->wData[7][35]=137;
-FcL->wData[7][36]=142;
-FcL->wData[7][37]=131;
-FcL->wData[7][38]=39;
-FcL->wData[7][39]=83;
-FcL->wData[7][40]=2;
-FcL->wData[7][41]=-92;
-FcL->wData[7][42]=-133;
-FcL->wData[7][43]=155;
-FcL->wData[7][44]=51;
-FcL->wData[7][45]=65;
-FcL->wData[7][46]=-252;
-FcL->wData[7][47]=-48;
-FcL->wData[7][48]=243;
-FcL->wData[7][49]=-178;
-FcL->wData[7][50]=-132;
-FcL->wData[7][51]=-90;
-FcL->wData[7][52]=261;
-FcL->wData[7][53]=154;
-FcL->wData[7][54]=-49;
-FcL->wData[7][55]=3;
-FcL->wData[7][56]=205;
-FcL->wData[7][57]=143;
-FcL->wData[7][58]=-73;
-FcL->wData[7][59]=50;
-FcL->wData[7][60]=57;
-FcL->wData[7][61]=-114;
-FcL->wData[7][62]=178;
-FcL->wData[7][63]=-31;
-FcL->wData[7][64]=149;
-FcL->wData[7][65]=-137;
-FcL->wData[7][66]=-142;
-FcL->wData[7][67]=-492;
-FcL->wData[7][68]=-142;
-FcL->wData[7][69]=58;
-FcL->wData[7][70]=18;
-FcL->wData[7][71]=-19;
-FcL->wData[7][72]=-203;
-FcL->wData[7][73]=-310;
-FcL->wData[7][74]=-147;
-FcL->wData[7][75]=-343;
-FcL->wData[7][76]=102;
-FcL->wData[7][77]=-453;
-FcL->wData[7][78]=107;
-FcL->wData[7][79]=-56;
-FcL->wData[7][80]=-200;
-FcL->wData[8][0]=161;
-FcL->wData[8][1]=80;
-FcL->wData[8][2]=-75;
-FcL->wData[8][3]=121;
-FcL->wData[8][4]=-10;
-FcL->wData[8][5]=64;
-FcL->wData[8][6]=-122;
-FcL->wData[8][7]=188;
-FcL->wData[8][8]=-183;
-FcL->wData[8][9]=-78;
-FcL->wData[8][10]=-187;
-FcL->wData[8][11]=-194;
-FcL->wData[8][12]=-125;
-FcL->wData[8][13]=-72;
-FcL->wData[8][14]=-133;
-FcL->wData[8][15]=-151;
-FcL->wData[8][16]=-89;
-FcL->wData[8][17]=45;
-FcL->wData[8][18]=64;
-FcL->wData[8][19]=-175;
-FcL->wData[8][20]=13;
-FcL->wData[8][21]=-154;
-FcL->wData[8][22]=-120;
-FcL->wData[8][23]=-51;
-FcL->wData[8][24]=80;
-FcL->wData[8][25]=12;
-FcL->wData[8][26]=-12;
-FcL->wData[8][27]=-169;
-FcL->wData[8][28]=-51;
-FcL->wData[8][29]=-147;
-FcL->wData[8][30]=175;
-FcL->wData[8][31]=23;
-FcL->wData[8][32]=-54;
-FcL->wData[8][33]=-12;
-FcL->wData[8][34]=-124;
-FcL->wData[8][35]=141;
-FcL->wData[8][36]=88;
-FcL->wData[8][37]=-26;
-FcL->wData[8][38]=-18;
-FcL->wData[8][39]=172;
-FcL->wData[8][40]=3;
-FcL->wData[8][41]=-199;
-FcL->wData[8][42]=170;
-FcL->wData[8][43]=86;
-FcL->wData[8][44]=33;
-FcL->wData[8][45]=187;
-FcL->wData[8][46]=-65;
-FcL->wData[8][47]=-1;
-FcL->wData[8][48]=38;
-FcL->wData[8][49]=-12;
-FcL->wData[8][50]=-125;
-FcL->wData[8][51]=-63;
-FcL->wData[8][52]=-63;
-FcL->wData[8][53]=-13;
-FcL->wData[8][54]=122;
-FcL->wData[8][55]=168;
-FcL->wData[8][56]=-206;
-FcL->wData[8][57]=-57;
-FcL->wData[8][58]=-34;
-FcL->wData[8][59]=-58;
-FcL->wData[8][60]=-128;
-FcL->wData[8][61]=-116;
-FcL->wData[8][62]=120;
-FcL->wData[8][63]=153;
-FcL->wData[8][64]=-174;
-FcL->wData[8][65]=166;
-FcL->wData[8][66]=80;
-FcL->wData[8][67]=27;
-FcL->wData[8][68]=-153;
-FcL->wData[8][69]=29;
-FcL->wData[8][70]=-139;
-FcL->wData[8][71]=-78;
-FcL->wData[8][72]=105;
-FcL->wData[8][73]=-39;
-FcL->wData[8][74]=11;
-FcL->wData[8][75]=-9;
-FcL->wData[8][76]=-58;
-FcL->wData[8][77]=-159;
-FcL->wData[8][78]=-4;
-FcL->wData[8][79]=-16;
-FcL->wData[8][80]=-41;
-FcL->wData[9][0]=-128;
-FcL->wData[9][1]=170;
-FcL->wData[9][2]=-362;
-FcL->wData[9][3]=247;
-FcL->wData[9][4]=16;
-FcL->wData[9][5]=-205;
-FcL->wData[9][6]=-379;
-FcL->wData[9][7]=-74;
-FcL->wData[9][8]=94;
-FcL->wData[9][9]=79;
-FcL->wData[9][10]=-27;
-FcL->wData[9][11]=-85;
-FcL->wData[9][12]=15;
-FcL->wData[9][13]=164;
-FcL->wData[9][14]=-154;
-FcL->wData[9][15]=-88;
-FcL->wData[9][16]=169;
-FcL->wData[9][17]=-121;
-FcL->wData[9][18]=-129;
-FcL->wData[9][19]=-347;
-FcL->wData[9][20]=-21;
-FcL->wData[9][21]=-252;
-FcL->wData[9][22]=47;
-FcL->wData[9][23]=-121;
-FcL->wData[9][24]=99;
-FcL->wData[9][25]=-42;
-FcL->wData[9][26]=-126;
-FcL->wData[9][27]=162;
-FcL->wData[9][28]=299;
-FcL->wData[9][29]=-225;
-FcL->wData[9][30]=-133;
-FcL->wData[9][31]=-206;
-FcL->wData[9][32]=-65;
-FcL->wData[9][33]=-536;
-FcL->wData[9][34]=-38;
-FcL->wData[9][35]=0;
-FcL->wData[9][36]=35;
-FcL->wData[9][37]=303;
-FcL->wData[9][38]=103;
-FcL->wData[9][39]=-245;
-FcL->wData[9][40]=157;
-FcL->wData[9][41]=-150;
-FcL->wData[9][42]=77;
-FcL->wData[9][43]=279;
-FcL->wData[9][44]=97;
-FcL->wData[9][45]=228;
-FcL->wData[9][46]=104;
-FcL->wData[9][47]=158;
-FcL->wData[9][48]=-211;
-FcL->wData[9][49]=-287;
-FcL->wData[9][50]=-106;
-FcL->wData[9][51]=-295;
-FcL->wData[9][52]=282;
-FcL->wData[9][53]=109;
-FcL->wData[9][54]=103;
-FcL->wData[9][55]=-358;
-FcL->wData[9][56]=69;
-FcL->wData[9][57]=91;
-FcL->wData[9][58]=82;
-FcL->wData[9][59]=-103;
-FcL->wData[9][60]=-515;
-FcL->wData[9][61]=261;
-FcL->wData[9][62]=-15;
-FcL->wData[9][63]=-101;
-FcL->wData[9][64]=-447;
-FcL->wData[9][65]=-219;
-FcL->wData[9][66]=222;
-FcL->wData[9][67]=128;
-FcL->wData[9][68]=75;
-FcL->wData[9][69]=-305;
-FcL->wData[9][70]=-217;
-FcL->wData[9][71]=167;
-FcL->wData[9][72]=-379;
-FcL->wData[9][73]=-208;
-FcL->wData[9][74]=186;
-FcL->wData[9][75]=329;
-FcL->wData[9][76]=406;
-FcL->wData[9][77]=143;
-FcL->wData[9][78]=242;
-FcL->wData[9][79]=-208;
-FcL->wData[9][80]=325;
-FcL->wData[10][0]=-87;
-FcL->wData[10][1]=121;
-FcL->wData[10][2]=66;
-FcL->wData[10][3]=-74;
-FcL->wData[10][4]=23;
-FcL->wData[10][5]=-127;
-FcL->wData[10][6]=-174;
-FcL->wData[10][7]=-274;
-FcL->wData[10][8]=27;
-FcL->wData[10][9]=109;
-FcL->wData[10][10]=79;
-FcL->wData[10][11]=-252;
-FcL->wData[10][12]=-132;
-FcL->wData[10][13]=98;
-FcL->wData[10][14]=84;
-FcL->wData[10][15]=-48;
-FcL->wData[10][16]=5;
-FcL->wData[10][17]=-131;
-FcL->wData[10][18]=-35;
-FcL->wData[10][19]=-25;
-FcL->wData[10][20]=33;
-FcL->wData[10][21]=-264;
-FcL->wData[10][22]=86;
-FcL->wData[10][23]=108;
-FcL->wData[10][24]=-135;
-FcL->wData[10][25]=5;
-FcL->wData[10][26]=69;
-FcL->wData[10][27]=-42;
-FcL->wData[10][28]=20;
-FcL->wData[10][29]=67;
-FcL->wData[10][30]=-107;
-FcL->wData[10][31]=-105;
-FcL->wData[10][32]=83;
-FcL->wData[10][33]=-173;
-FcL->wData[10][34]=365;
-FcL->wData[10][35]=14;
-FcL->wData[10][36]=-54;
-FcL->wData[10][37]=-264;
-FcL->wData[10][38]=122;
-FcL->wData[10][39]=-10;
-FcL->wData[10][40]=-6;
-FcL->wData[10][41]=-44;
-FcL->wData[10][42]=-37;
-FcL->wData[10][43]=-35;
-FcL->wData[10][44]=121;
-FcL->wData[10][45]=29;
-FcL->wData[10][46]=56;
-FcL->wData[10][47]=-120;
-FcL->wData[10][48]=-443;
-FcL->wData[10][49]=3;
-FcL->wData[10][50]=-23;
-FcL->wData[10][51]=97;
-FcL->wData[10][52]=-149;
-FcL->wData[10][53]=69;
-FcL->wData[10][54]=60;
-FcL->wData[10][55]=-28;
-FcL->wData[10][56]=-142;
-FcL->wData[10][57]=102;
-FcL->wData[10][58]=25;
-FcL->wData[10][59]=-147;
-FcL->wData[10][60]=-252;
-FcL->wData[10][61]=97;
-FcL->wData[10][62]=-105;
-FcL->wData[10][63]=18;
-FcL->wData[10][64]=16;
-FcL->wData[10][65]=146;
-FcL->wData[10][66]=39;
-FcL->wData[10][67]=216;
-FcL->wData[10][68]=-12;
-FcL->wData[10][69]=-1;
-FcL->wData[10][70]=98;
-FcL->wData[10][71]=-79;
-FcL->wData[10][72]=-74;
-FcL->wData[10][73]=16;
-FcL->wData[10][74]=-10;
-FcL->wData[10][75]=61;
-FcL->wData[10][76]=-2;
-FcL->wData[10][77]=-40;
-FcL->wData[10][78]=-111;
-FcL->wData[10][79]=155;
-FcL->wData[10][80]=85;
-FcL->wData[11][0]=49;
-FcL->wData[11][1]=-83;
-FcL->wData[11][2]=-165;
-FcL->wData[11][3]=1;
-FcL->wData[11][4]=-135;
-FcL->wData[11][5]=-185;
-FcL->wData[11][6]=-173;
-FcL->wData[11][7]=103;
-FcL->wData[11][8]=-33;
-FcL->wData[11][9]=-81;
-FcL->wData[11][10]=-41;
-FcL->wData[11][11]=-107;
-FcL->wData[11][12]=-1;
-FcL->wData[11][13]=-140;
-FcL->wData[11][14]=116;
-FcL->wData[11][15]=172;
-FcL->wData[11][16]=-131;
-FcL->wData[11][17]=26;
-FcL->wData[11][18]=-212;
-FcL->wData[11][19]=176;
-FcL->wData[11][20]=-111;
-FcL->wData[11][21]=83;
-FcL->wData[11][22]=-139;
-FcL->wData[11][23]=-110;
-FcL->wData[11][24]=200;
-FcL->wData[11][25]=-195;
-FcL->wData[11][26]=8;
-FcL->wData[11][27]=-137;
-FcL->wData[11][28]=3;
-FcL->wData[11][29]=-9;
-FcL->wData[11][30]=106;
-FcL->wData[11][31]=119;
-FcL->wData[11][32]=14;
-FcL->wData[11][33]=-208;
-FcL->wData[11][34]=-50;
-FcL->wData[11][35]=-163;
-FcL->wData[11][36]=-135;
-FcL->wData[11][37]=-99;
-FcL->wData[11][38]=163;
-FcL->wData[11][39]=-209;
-FcL->wData[11][40]=21;
-FcL->wData[11][41]=2;
-FcL->wData[11][42]=32;
-FcL->wData[11][43]=-162;
-FcL->wData[11][44]=-87;
-FcL->wData[11][45]=60;
-FcL->wData[11][46]=-131;
-FcL->wData[11][47]=-161;
-FcL->wData[11][48]=-73;
-FcL->wData[11][49]=-152;
-FcL->wData[11][50]=-207;
-FcL->wData[11][51]=121;
-FcL->wData[11][52]=95;
-FcL->wData[11][53]=1;
-FcL->wData[11][54]=-32;
-FcL->wData[11][55]=37;
-FcL->wData[11][56]=-204;
-FcL->wData[11][57]=-168;
-FcL->wData[11][58]=-134;
-FcL->wData[11][59]=22;
-FcL->wData[11][60]=-138;
-FcL->wData[11][61]=-32;
-FcL->wData[11][62]=-92;
-FcL->wData[11][63]=66;
-FcL->wData[11][64]=149;
-FcL->wData[11][65]=-54;
-FcL->wData[11][66]=-189;
-FcL->wData[11][67]=-166;
-FcL->wData[11][68]=17;
-FcL->wData[11][69]=148;
-FcL->wData[11][70]=-74;
-FcL->wData[11][71]=-1;
-FcL->wData[11][72]=-233;
-FcL->wData[11][73]=46;
-FcL->wData[11][74]=-146;
-FcL->wData[11][75]=174;
-FcL->wData[11][76]=213;
-FcL->wData[11][77]=110;
-FcL->wData[11][78]=1;
-FcL->wData[11][79]=-146;
-FcL->wData[11][80]=70;
-FcL->wData[12][0]=-109;
-FcL->wData[12][1]=-56;
-FcL->wData[12][2]=-29;
-FcL->wData[12][3]=-325;
-FcL->wData[12][4]=34;
-FcL->wData[12][5]=221;
-FcL->wData[12][6]=293;
-FcL->wData[12][7]=115;
-FcL->wData[12][8]=-90;
-FcL->wData[12][9]=7;
-FcL->wData[12][10]=193;
-FcL->wData[12][11]=-344;
-FcL->wData[12][12]=-544;
-FcL->wData[12][13]=295;
-FcL->wData[12][14]=-289;
-FcL->wData[12][15]=309;
-FcL->wData[12][16]=181;
-FcL->wData[12][17]=-608;
-FcL->wData[12][18]=479;
-FcL->wData[12][19]=116;
-FcL->wData[12][20]=1;
-FcL->wData[12][21]=-442;
-FcL->wData[12][22]=82;
-FcL->wData[12][23]=70;
-FcL->wData[12][24]=107;
-FcL->wData[12][25]=279;
-FcL->wData[12][26]=-267;
-FcL->wData[12][27]=66;
-FcL->wData[12][28]=208;
-FcL->wData[12][29]=148;
-FcL->wData[12][30]=219;
-FcL->wData[12][31]=6;
-FcL->wData[12][32]=45;
-FcL->wData[12][33]=-437;
-FcL->wData[12][34]=122;
-FcL->wData[12][35]=36;
-FcL->wData[12][36]=-312;
-FcL->wData[12][37]=-281;
-FcL->wData[12][38]=106;
-FcL->wData[12][39]=-175;
-FcL->wData[12][40]=-233;
-FcL->wData[12][41]=-82;
-FcL->wData[12][42]=-516;
-FcL->wData[12][43]=78;
-FcL->wData[12][44]=187;
-FcL->wData[12][45]=67;
-FcL->wData[12][46]=20;
-FcL->wData[12][47]=38;
-FcL->wData[12][48]=106;
-FcL->wData[12][49]=-257;
-FcL->wData[12][50]=-101;
-FcL->wData[12][51]=1;
-FcL->wData[12][52]=-136;
-FcL->wData[12][53]=184;
-FcL->wData[12][54]=-41;
-FcL->wData[12][55]=151;
-FcL->wData[12][56]=-198;
-FcL->wData[12][57]=-22;
-FcL->wData[12][58]=-173;
-FcL->wData[12][59]=-171;
-FcL->wData[12][60]=22;
-FcL->wData[12][61]=-8;
-FcL->wData[12][62]=-56;
-FcL->wData[12][63]=-66;
-FcL->wData[12][64]=-274;
-FcL->wData[12][65]=-39;
-FcL->wData[12][66]=83;
-FcL->wData[12][67]=416;
-FcL->wData[12][68]=-174;
-FcL->wData[12][69]=-620;
-FcL->wData[12][70]=138;
-FcL->wData[12][71]=-396;
-FcL->wData[12][72]=-115;
-FcL->wData[12][73]=111;
-FcL->wData[12][74]=215;
-FcL->wData[12][75]=26;
-FcL->wData[12][76]=-77;
-FcL->wData[12][77]=60;
-FcL->wData[12][78]=-99;
-FcL->wData[12][79]=4;
-FcL->wData[12][80]=58;
-FcL->wData[13][0]=-172;
-FcL->wData[13][1]=-262;
-FcL->wData[13][2]=-109;
-FcL->wData[13][3]=451;
-FcL->wData[13][4]=567;
-FcL->wData[13][5]=78;
-FcL->wData[13][6]=161;
-FcL->wData[13][7]=65;
-FcL->wData[13][8]=-4;
-FcL->wData[13][9]=144;
-FcL->wData[13][10]=-72;
-FcL->wData[13][11]=-336;
-FcL->wData[13][12]=-146;
-FcL->wData[13][13]=417;
-FcL->wData[13][14]=7;
-FcL->wData[13][15]=85;
-FcL->wData[13][16]=237;
-FcL->wData[13][17]=-268;
-FcL->wData[13][18]=152;
-FcL->wData[13][19]=248;
-FcL->wData[13][20]=-58;
-FcL->wData[13][21]=-212;
-FcL->wData[13][22]=68;
-FcL->wData[13][23]=72;
-FcL->wData[13][24]=0;
-FcL->wData[13][25]=125;
-FcL->wData[13][26]=-254;
-FcL->wData[13][27]=-43;
-FcL->wData[13][28]=264;
-FcL->wData[13][29]=96;
-FcL->wData[13][30]=198;
-FcL->wData[13][31]=-4;
-FcL->wData[13][32]=-50;
-FcL->wData[13][33]=292;
-FcL->wData[13][34]=-63;
-FcL->wData[13][35]=-39;
-FcL->wData[13][36]=-142;
-FcL->wData[13][37]=-140;
-FcL->wData[13][38]=333;
-FcL->wData[13][39]=-10;
-FcL->wData[13][40]=-15;
-FcL->wData[13][41]=-67;
-FcL->wData[13][42]=-16;
-FcL->wData[13][43]=-92;
-FcL->wData[13][44]=302;
-FcL->wData[13][45]=-160;
-FcL->wData[13][46]=164;
-FcL->wData[13][47]=44;
-FcL->wData[13][48]=50;
-FcL->wData[13][49]=33;
-FcL->wData[13][50]=102;
-FcL->wData[13][51]=-107;
-FcL->wData[13][52]=-252;
-FcL->wData[13][53]=305;
-FcL->wData[13][54]=106;
-FcL->wData[13][55]=123;
-FcL->wData[13][56]=93;
-FcL->wData[13][57]=40;
-FcL->wData[13][58]=87;
-FcL->wData[13][59]=-26;
-FcL->wData[13][60]=185;
-FcL->wData[13][61]=-78;
-FcL->wData[13][62]=173;
-FcL->wData[13][63]=-36;
-FcL->wData[13][64]=-117;
-FcL->wData[13][65]=-381;
-FcL->wData[13][66]=-110;
-FcL->wData[13][67]=269;
-FcL->wData[13][68]=-128;
-FcL->wData[13][69]=-119;
-FcL->wData[13][70]=77;
-FcL->wData[13][71]=-114;
-FcL->wData[13][72]=-28;
-FcL->wData[13][73]=18;
-FcL->wData[13][74]=-43;
-FcL->wData[13][75]=250;
-FcL->wData[13][76]=104;
-FcL->wData[13][77]=116;
-FcL->wData[13][78]=-41;
-FcL->wData[13][79]=-98;
-FcL->wData[13][80]=3;
-FcL->wData[14][0]=-59;
-FcL->wData[14][1]=76;
-FcL->wData[14][2]=-30;
-FcL->wData[14][3]=327;
-FcL->wData[14][4]=-165;
-FcL->wData[14][5]=-38;
-FcL->wData[14][6]=-122;
-FcL->wData[14][7]=-239;
-FcL->wData[14][8]=251;
-FcL->wData[14][9]=-58;
-FcL->wData[14][10]=-199;
-FcL->wData[14][11]=95;
-FcL->wData[14][12]=4;
-FcL->wData[14][13]=269;
-FcL->wData[14][14]=354;
-FcL->wData[14][15]=21;
-FcL->wData[14][16]=-85;
-FcL->wData[14][17]=111;
-FcL->wData[14][18]=-177;
-FcL->wData[14][19]=-183;
-FcL->wData[14][20]=-267;
-FcL->wData[14][21]=-668;
-FcL->wData[14][22]=348;
-FcL->wData[14][23]=375;
-FcL->wData[14][24]=261;
-FcL->wData[14][25]=-144;
-FcL->wData[14][26]=-40;
-FcL->wData[14][27]=-29;
-FcL->wData[14][28]=179;
-FcL->wData[14][29]=196;
-FcL->wData[14][30]=-45;
-FcL->wData[14][31]=-92;
-FcL->wData[14][32]=-51;
-FcL->wData[14][33]=-72;
-FcL->wData[14][34]=-146;
-FcL->wData[14][35]=-48;
-FcL->wData[14][36]=166;
-FcL->wData[14][37]=150;
-FcL->wData[14][38]=8;
-FcL->wData[14][39]=161;
-FcL->wData[14][40]=272;
-FcL->wData[14][41]=-191;
-FcL->wData[14][42]=-108;
-FcL->wData[14][43]=81;
-FcL->wData[14][44]=182;
-FcL->wData[14][45]=137;
-FcL->wData[14][46]=263;
-FcL->wData[14][47]=247;
-FcL->wData[14][48]=-151;
-FcL->wData[14][49]=-345;
-FcL->wData[14][50]=-183;
-FcL->wData[14][51]=-212;
-FcL->wData[14][52]=-16;
-FcL->wData[14][53]=-252;
-FcL->wData[14][54]=28;
-FcL->wData[14][55]=73;
-FcL->wData[14][56]=-25;
-FcL->wData[14][57]=9;
-FcL->wData[14][58]=-108;
-FcL->wData[14][59]=-67;
-FcL->wData[14][60]=-7;
-FcL->wData[14][61]=163;
-FcL->wData[14][62]=113;
-FcL->wData[14][63]=-93;
-FcL->wData[14][64]=89;
-FcL->wData[14][65]=-80;
-FcL->wData[14][66]=-96;
-FcL->wData[14][67]=236;
-FcL->wData[14][68]=-115;
-FcL->wData[14][69]=-102;
-FcL->wData[14][70]=94;
-FcL->wData[14][71]=-86;
-FcL->wData[14][72]=-86;
-FcL->wData[14][73]=27;
-FcL->wData[14][74]=-59;
-FcL->wData[14][75]=208;
-FcL->wData[14][76]=137;
-FcL->wData[14][77]=132;
-FcL->wData[14][78]=-12;
-FcL->wData[14][79]=-162;
-FcL->wData[14][80]=-32;
-FcL->wData[15][0]=-60;
-FcL->wData[15][1]=160;
-FcL->wData[15][2]=89;
-FcL->wData[15][3]=142;
-FcL->wData[15][4]=-74;
-FcL->wData[15][5]=100;
-FcL->wData[15][6]=126;
-FcL->wData[15][7]=-30;
-FcL->wData[15][8]=109;
-FcL->wData[15][9]=127;
-FcL->wData[15][10]=-63;
-FcL->wData[15][11]=-5;
-FcL->wData[15][12]=1;
-FcL->wData[15][13]=-147;
-FcL->wData[15][14]=45;
-FcL->wData[15][15]=70;
-FcL->wData[15][16]=-36;
-FcL->wData[15][17]=142;
-FcL->wData[15][18]=33;
-FcL->wData[15][19]=160;
-FcL->wData[15][20]=3;
-FcL->wData[15][21]=64;
-FcL->wData[15][22]=17;
-FcL->wData[15][23]=74;
-FcL->wData[15][24]=23;
-FcL->wData[15][25]=-146;
-FcL->wData[15][26]=209;
-FcL->wData[15][27]=-123;
-FcL->wData[15][28]=-147;
-FcL->wData[15][29]=-24;
-FcL->wData[15][30]=-31;
-FcL->wData[15][31]=-75;
-FcL->wData[15][32]=165;
-FcL->wData[15][33]=-105;
-FcL->wData[15][34]=34;
-FcL->wData[15][35]=-158;
-FcL->wData[15][36]=112;
-FcL->wData[15][37]=222;
-FcL->wData[15][38]=157;
-FcL->wData[15][39]=177;
-FcL->wData[15][40]=39;
-FcL->wData[15][41]=-75;
-FcL->wData[15][42]=308;
-FcL->wData[15][43]=-216;
-FcL->wData[15][44]=106;
-FcL->wData[15][45]=-55;
-FcL->wData[15][46]=-175;
-FcL->wData[15][47]=139;
-FcL->wData[15][48]=-200;
-FcL->wData[15][49]=126;
-FcL->wData[15][50]=349;
-FcL->wData[15][51]=32;
-FcL->wData[15][52]=-176;
-FcL->wData[15][53]=126;
-FcL->wData[15][54]=-128;
-FcL->wData[15][55]=-359;
-FcL->wData[15][56]=-55;
-FcL->wData[15][57]=-93;
-FcL->wData[15][58]=11;
-FcL->wData[15][59]=54;
-FcL->wData[15][60]=236;
-FcL->wData[15][61]=-265;
-FcL->wData[15][62]=-121;
-FcL->wData[15][63]=-138;
-FcL->wData[15][64]=431;
-FcL->wData[15][65]=25;
-FcL->wData[15][66]=-48;
-FcL->wData[15][67]=-166;
-FcL->wData[15][68]=34;
-FcL->wData[15][69]=149;
-FcL->wData[15][70]=-130;
-FcL->wData[15][71]=132;
-FcL->wData[15][72]=208;
-FcL->wData[15][73]=49;
-FcL->wData[15][74]=-248;
-FcL->wData[15][75]=-21;
-FcL->wData[15][76]=-573;
-FcL->wData[15][77]=-57;
-FcL->wData[15][78]=-351;
-FcL->wData[15][79]=171;
-FcL->wData[15][80]=-71;
-FcL->wData[16][0]=-15;
-FcL->wData[16][1]=-34;
-FcL->wData[16][2]=43;
-FcL->wData[16][3]=108;
-FcL->wData[16][4]=52;
-FcL->wData[16][5]=-149;
-FcL->wData[16][6]=44;
-FcL->wData[16][7]=-138;
-FcL->wData[16][8]=193;
-FcL->wData[16][9]=35;
-FcL->wData[16][10]=97;
-FcL->wData[16][11]=-97;
-FcL->wData[16][12]=34;
-FcL->wData[16][13]=-39;
-FcL->wData[16][14]=150;
-FcL->wData[16][15]=153;
-FcL->wData[16][16]=115;
-FcL->wData[16][17]=-61;
-FcL->wData[16][18]=309;
-FcL->wData[16][19]=-51;
-FcL->wData[16][20]=91;
-FcL->wData[16][21]=-10;
-FcL->wData[16][22]=-96;
-FcL->wData[16][23]=165;
-FcL->wData[16][24]=263;
-FcL->wData[16][25]=-22;
-FcL->wData[16][26]=-201;
-FcL->wData[16][27]=164;
-FcL->wData[16][28]=-21;
-FcL->wData[16][29]=-24;
-FcL->wData[16][30]=-271;
-FcL->wData[16][31]=109;
-FcL->wData[16][32]=-171;
-FcL->wData[16][33]=13;
-FcL->wData[16][34]=-109;
-FcL->wData[16][35]=108;
-FcL->wData[16][36]=2;
-FcL->wData[16][37]=32;
-FcL->wData[16][38]=-231;
-FcL->wData[16][39]=-144;
-FcL->wData[16][40]=-2;
-FcL->wData[16][41]=33;
-FcL->wData[16][42]=3;
-FcL->wData[16][43]=152;
-FcL->wData[16][44]=35;
-FcL->wData[16][45]=-22;
-FcL->wData[16][46]=-235;
-FcL->wData[16][47]=-166;
-FcL->wData[16][48]=-38;
-FcL->wData[16][49]=52;
-FcL->wData[16][50]=-115;
-FcL->wData[16][51]=-105;
-FcL->wData[16][52]=137;
-FcL->wData[16][53]=171;
-FcL->wData[16][54]=49;
-FcL->wData[16][55]=97;
-FcL->wData[16][56]=189;
-FcL->wData[16][57]=-65;
-FcL->wData[16][58]=179;
-FcL->wData[16][59]=-129;
-FcL->wData[16][60]=-127;
-FcL->wData[16][61]=218;
-FcL->wData[16][62]=285;
-FcL->wData[16][63]=-94;
-FcL->wData[16][64]=223;
-FcL->wData[16][65]=21;
-FcL->wData[16][66]=14;
-FcL->wData[16][67]=-68;
-FcL->wData[16][68]=296;
-FcL->wData[16][69]=34;
-FcL->wData[16][70]=84;
-FcL->wData[16][71]=-48;
-FcL->wData[16][72]=134;
-FcL->wData[16][73]=209;
-FcL->wData[16][74]=-133;
-FcL->wData[16][75]=-54;
-FcL->wData[16][76]=-181;
-FcL->wData[16][77]=-92;
-FcL->wData[16][78]=-71;
-FcL->wData[16][79]=134;
-FcL->wData[16][80]=-10;
-FcL->wData[17][0]=63;
-FcL->wData[17][1]=-29;
-FcL->wData[17][2]=-70;
-FcL->wData[17][3]=4;
-FcL->wData[17][4]=-218;
-FcL->wData[17][5]=106;
-FcL->wData[17][6]=-95;
-FcL->wData[17][7]=193;
-FcL->wData[17][8]=85;
-FcL->wData[17][9]=4;
-FcL->wData[17][10]=-250;
-FcL->wData[17][11]=210;
-FcL->wData[17][12]=16;
-FcL->wData[17][13]=-256;
-FcL->wData[17][14]=146;
-FcL->wData[17][15]=81;
-FcL->wData[17][16]=102;
-FcL->wData[17][17]=-131;
-FcL->wData[17][18]=3;
-FcL->wData[17][19]=-214;
-FcL->wData[17][20]=167;
-FcL->wData[17][21]=276;
-FcL->wData[17][22]=-73;
-FcL->wData[17][23]=120;
-FcL->wData[17][24]=72;
-FcL->wData[17][25]=-84;
-FcL->wData[17][26]=116;
-FcL->wData[17][27]=42;
-FcL->wData[17][28]=-114;
-FcL->wData[17][29]=32;
-FcL->wData[17][30]=-28;
-FcL->wData[17][31]=-202;
-FcL->wData[17][32]=139;
-FcL->wData[17][33]=-156;
-FcL->wData[17][34]=189;
-FcL->wData[17][35]=-53;
-FcL->wData[17][36]=-64;
-FcL->wData[17][37]=339;
-FcL->wData[17][38]=-169;
-FcL->wData[17][39]=-132;
-FcL->wData[17][40]=7;
-FcL->wData[17][41]=26;
-FcL->wData[17][42]=243;
-FcL->wData[17][43]=2;
-FcL->wData[17][44]=-45;
-FcL->wData[17][45]=25;
-FcL->wData[17][46]=-96;
-FcL->wData[17][47]=138;
-FcL->wData[17][48]=-24;
-FcL->wData[17][49]=-209;
-FcL->wData[17][50]=102;
-FcL->wData[17][51]=-173;
-FcL->wData[17][52]=225;
-FcL->wData[17][53]=-183;
-FcL->wData[17][54]=82;
-FcL->wData[17][55]=56;
-FcL->wData[17][56]=-160;
-FcL->wData[17][57]=8;
-FcL->wData[17][58]=-49;
-FcL->wData[17][59]=188;
-FcL->wData[17][60]=-62;
-FcL->wData[17][61]=230;
-FcL->wData[17][62]=-295;
-FcL->wData[17][63]=42;
-FcL->wData[17][64]=-182;
-FcL->wData[17][65]=-108;
-FcL->wData[17][66]=-329;
-FcL->wData[17][67]=112;
-FcL->wData[17][68]=32;
-FcL->wData[17][69]=21;
-FcL->wData[17][70]=-26;
-FcL->wData[17][71]=-178;
-FcL->wData[17][72]=-9;
-FcL->wData[17][73]=-353;
-FcL->wData[17][74]=-89;
-FcL->wData[17][75]=124;
-FcL->wData[17][76]=89;
-FcL->wData[17][77]=-35;
-FcL->wData[17][78]=-63;
-FcL->wData[17][79]=-218;
-FcL->wData[17][80]=-36;
-FcL->wData[18][0]=86;
-FcL->wData[18][1]=-282;
-FcL->wData[18][2]=24;
-FcL->wData[18][3]=373;
-FcL->wData[18][4]=10;
-FcL->wData[18][5]=-156;
-FcL->wData[18][6]=106;
-FcL->wData[18][7]=41;
-FcL->wData[18][8]=-123;
-FcL->wData[18][9]=66;
-FcL->wData[18][10]=163;
-FcL->wData[18][11]=109;
-FcL->wData[18][12]=15;
-FcL->wData[18][13]=-130;
-FcL->wData[18][14]=79;
-FcL->wData[18][15]=-92;
-FcL->wData[18][16]=87;
-FcL->wData[18][17]=-42;
-FcL->wData[18][18]=28;
-FcL->wData[18][19]=79;
-FcL->wData[18][20]=-13;
-FcL->wData[18][21]=-293;
-FcL->wData[18][22]=-2;
-FcL->wData[18][23]=-216;
-FcL->wData[18][24]=-211;
-FcL->wData[18][25]=95;
-FcL->wData[18][26]=124;
-FcL->wData[18][27]=116;
-FcL->wData[18][28]=188;
-FcL->wData[18][29]=-82;
-FcL->wData[18][30]=188;
-FcL->wData[18][31]=4;
-FcL->wData[18][32]=-312;
-FcL->wData[18][33]=169;
-FcL->wData[18][34]=-163;
-FcL->wData[18][35]=-236;
-FcL->wData[18][36]=227;
-FcL->wData[18][37]=186;
-FcL->wData[18][38]=6;
-FcL->wData[18][39]=-68;
-FcL->wData[18][40]=269;
-FcL->wData[18][41]=-14;
-FcL->wData[18][42]=-69;
-FcL->wData[18][43]=146;
-FcL->wData[18][44]=-196;
-FcL->wData[18][45]=-116;
-FcL->wData[18][46]=-5;
-FcL->wData[18][47]=66;
-FcL->wData[18][48]=-178;
-FcL->wData[18][49]=126;
-FcL->wData[18][50]=68;
-FcL->wData[18][51]=115;
-FcL->wData[18][52]=-60;
-FcL->wData[18][53]=193;
-FcL->wData[18][54]=108;
-FcL->wData[18][55]=-142;
-FcL->wData[18][56]=29;
-FcL->wData[18][57]=-52;
-FcL->wData[18][58]=-51;
-FcL->wData[18][59]=46;
-FcL->wData[18][60]=-20;
-FcL->wData[18][61]=-124;
-FcL->wData[18][62]=-44;
-FcL->wData[18][63]=120;
-FcL->wData[18][64]=180;
-FcL->wData[18][65]=104;
-FcL->wData[18][66]=129;
-FcL->wData[18][67]=-98;
-FcL->wData[18][68]=222;
-FcL->wData[18][69]=-64;
-FcL->wData[18][70]=-220;
-FcL->wData[18][71]=163;
-FcL->wData[18][72]=414;
-FcL->wData[18][73]=75;
-FcL->wData[18][74]=-250;
-FcL->wData[18][75]=192;
-FcL->wData[18][76]=32;
-FcL->wData[18][77]=-55;
-FcL->wData[18][78]=197;
-FcL->wData[18][79]=-52;
-FcL->wData[18][80]=84;
-FcL->wData[19][0]=-16;
-FcL->wData[19][1]=30;
-FcL->wData[19][2]=-45;
-FcL->wData[19][3]=51;
-FcL->wData[19][4]=-6;
-FcL->wData[19][5]=165;
-FcL->wData[19][6]=111;
-FcL->wData[19][7]=21;
-FcL->wData[19][8]=93;
-FcL->wData[19][9]=-226;
-FcL->wData[19][10]=178;
-FcL->wData[19][11]=25;
-FcL->wData[19][12]=-226;
-FcL->wData[19][13]=183;
-FcL->wData[19][14]=-199;
-FcL->wData[19][15]=-233;
-FcL->wData[19][16]=99;
-FcL->wData[19][17]=-93;
-FcL->wData[19][18]=76;
-FcL->wData[19][19]=-22;
-FcL->wData[19][20]=36;
-FcL->wData[19][21]=-153;
-FcL->wData[19][22]=65;
-FcL->wData[19][23]=-73;
-FcL->wData[19][24]=-163;
-FcL->wData[19][25]=-140;
-FcL->wData[19][26]=182;
-FcL->wData[19][27]=-68;
-FcL->wData[19][28]=-178;
-FcL->wData[19][29]=53;
-FcL->wData[19][30]=111;
-FcL->wData[19][31]=-115;
-FcL->wData[19][32]=0;
-FcL->wData[19][33]=-68;
-FcL->wData[19][34]=-1;
-FcL->wData[19][35]=78;
-FcL->wData[19][36]=-191;
-FcL->wData[19][37]=-165;
-FcL->wData[19][38]=-218;
-FcL->wData[19][39]=-94;
-FcL->wData[19][40]=20;
-FcL->wData[19][41]=-168;
-FcL->wData[19][42]=-211;
-FcL->wData[19][43]=-198;
-FcL->wData[19][44]=115;
-FcL->wData[19][45]=-193;
-FcL->wData[19][46]=-106;
-FcL->wData[19][47]=-163;
-FcL->wData[19][48]=163;
-FcL->wData[19][49]=53;
-FcL->wData[19][50]=140;
-FcL->wData[19][51]=-155;
-FcL->wData[19][52]=21;
-FcL->wData[19][53]=75;
-FcL->wData[19][54]=-169;
-FcL->wData[19][55]=-109;
-FcL->wData[19][56]=-226;
-FcL->wData[19][57]=22;
-FcL->wData[19][58]=87;
-FcL->wData[19][59]=-72;
-FcL->wData[19][60]=-1;
-FcL->wData[19][61]=70;
-FcL->wData[19][62]=88;
-FcL->wData[19][63]=-123;
-FcL->wData[19][64]=14;
-FcL->wData[19][65]=131;
-FcL->wData[19][66]=-41;
-FcL->wData[19][67]=-85;
-FcL->wData[19][68]=-79;
-FcL->wData[19][69]=-7;
-FcL->wData[19][70]=-123;
-FcL->wData[19][71]=-129;
-FcL->wData[19][72]=146;
-FcL->wData[19][73]=57;
-FcL->wData[19][74]=-22;
-FcL->wData[19][75]=-190;
-FcL->wData[19][76]=179;
-FcL->wData[19][77]=-156;
-FcL->wData[19][78]=-88;
-FcL->wData[19][79]=-168;
-FcL->wData[19][80]=-162;
-FcL->wData[20][0]=23;
-FcL->wData[20][1]=-62;
-FcL->wData[20][2]=-202;
-FcL->wData[20][3]=-364;
-FcL->wData[20][4]=93;
-FcL->wData[20][5]=37;
-FcL->wData[20][6]=-187;
-FcL->wData[20][7]=125;
-FcL->wData[20][8]=16;
-FcL->wData[20][9]=14;
-FcL->wData[20][10]=23;
-FcL->wData[20][11]=124;
-FcL->wData[20][12]=-39;
-FcL->wData[20][13]=-225;
-FcL->wData[20][14]=-183;
-FcL->wData[20][15]=-38;
-FcL->wData[20][16]=87;
-FcL->wData[20][17]=-273;
-FcL->wData[20][18]=-90;
-FcL->wData[20][19]=-44;
-FcL->wData[20][20]=37;
-FcL->wData[20][21]=390;
-FcL->wData[20][22]=42;
-FcL->wData[20][23]=-72;
-FcL->wData[20][24]=28;
-FcL->wData[20][25]=-140;
-FcL->wData[20][26]=20;
-FcL->wData[20][27]=-164;
-FcL->wData[20][28]=213;
-FcL->wData[20][29]=170;
-FcL->wData[20][30]=-248;
-FcL->wData[20][31]=-141;
-FcL->wData[20][32]=119;
-FcL->wData[20][33]=-461;
-FcL->wData[20][34]=59;
-FcL->wData[20][35]=-7;
-FcL->wData[20][36]=-50;
-FcL->wData[20][37]=78;
-FcL->wData[20][38]=-35;
-FcL->wData[20][39]=-238;
-FcL->wData[20][40]=-69;
-FcL->wData[20][41]=273;
-FcL->wData[20][42]=33;
-FcL->wData[20][43]=114;
-FcL->wData[20][44]=182;
-FcL->wData[20][45]=51;
-FcL->wData[20][46]=73;
-FcL->wData[20][47]=-11;
-FcL->wData[20][48]=170;
-FcL->wData[20][49]=-269;
-FcL->wData[20][50]=-40;
-FcL->wData[20][51]=-36;
-FcL->wData[20][52]=82;
-FcL->wData[20][53]=-121;
-FcL->wData[20][54]=88;
-FcL->wData[20][55]=-110;
-FcL->wData[20][56]=254;
-FcL->wData[20][57]=156;
-FcL->wData[20][58]=246;
-FcL->wData[20][59]=-131;
-FcL->wData[20][60]=-185;
-FcL->wData[20][61]=37;
-FcL->wData[20][62]=8;
-FcL->wData[20][63]=-112;
-FcL->wData[20][64]=-131;
-FcL->wData[20][65]=-36;
-FcL->wData[20][66]=143;
-FcL->wData[20][67]=145;
-FcL->wData[20][68]=124;
-FcL->wData[20][69]=101;
-FcL->wData[20][70]=-39;
-FcL->wData[20][71]=74;
-FcL->wData[20][72]=-72;
-FcL->wData[20][73]=-129;
-FcL->wData[20][74]=54;
-FcL->wData[20][75]=85;
-FcL->wData[20][76]=182;
-FcL->wData[20][77]=36;
-FcL->wData[20][78]=164;
-FcL->wData[20][79]=-72;
-FcL->wData[20][80]=202;
-FcL->wData[21][0]=99;
-FcL->wData[21][1]=-3;
-FcL->wData[21][2]=296;
-FcL->wData[21][3]=-67;
-FcL->wData[21][4]=304;
-FcL->wData[21][5]=-113;
-FcL->wData[21][6]=-41;
-FcL->wData[21][7]=-56;
-FcL->wData[21][8]=65;
-FcL->wData[21][9]=-188;
-FcL->wData[21][10]=-148;
-FcL->wData[21][11]=51;
-FcL->wData[21][12]=-15;
-FcL->wData[21][13]=-18;
-FcL->wData[21][14]=23;
-FcL->wData[21][15]=68;
-FcL->wData[21][16]=-197;
-FcL->wData[21][17]=145;
-FcL->wData[21][18]=224;
-FcL->wData[21][19]=155;
-FcL->wData[21][20]=18;
-FcL->wData[21][21]=-28;
-FcL->wData[21][22]=141;
-FcL->wData[21][23]=378;
-FcL->wData[21][24]=77;
-FcL->wData[21][25]=59;
-FcL->wData[21][26]=-205;
-FcL->wData[21][27]=-151;
-FcL->wData[21][28]=-62;
-FcL->wData[21][29]=152;
-FcL->wData[21][30]=186;
-FcL->wData[21][31]=357;
-FcL->wData[21][32]=-76;
-FcL->wData[21][33]=251;
-FcL->wData[21][34]=-49;
-FcL->wData[21][35]=69;
-FcL->wData[21][36]=-151;
-FcL->wData[21][37]=-378;
-FcL->wData[21][38]=48;
-FcL->wData[21][39]=190;
-FcL->wData[21][40]=-257;
-FcL->wData[21][41]=237;
-FcL->wData[21][42]=-198;
-FcL->wData[21][43]=-171;
-FcL->wData[21][44]=116;
-FcL->wData[21][45]=196;
-FcL->wData[21][46]=-23;
-FcL->wData[21][47]=-279;
-FcL->wData[21][48]=188;
-FcL->wData[21][49]=251;
-FcL->wData[21][50]=-20;
-FcL->wData[21][51]=47;
-FcL->wData[21][52]=-162;
-FcL->wData[21][53]=81;
-FcL->wData[21][54]=73;
-FcL->wData[21][55]=225;
-FcL->wData[21][56]=372;
-FcL->wData[21][57]=-160;
-FcL->wData[21][58]=24;
-FcL->wData[21][59]=-60;
-FcL->wData[21][60]=62;
-FcL->wData[21][61]=35;
-FcL->wData[21][62]=-55;
-FcL->wData[21][63]=24;
-FcL->wData[21][64]=370;
-FcL->wData[21][65]=95;
-FcL->wData[21][66]=-262;
-FcL->wData[21][67]=-70;
-FcL->wData[21][68]=-60;
-FcL->wData[21][69]=258;
-FcL->wData[21][70]=99;
-FcL->wData[21][71]=8;
-FcL->wData[21][72]=-46;
-FcL->wData[21][73]=143;
-FcL->wData[21][74]=58;
-FcL->wData[21][75]=-373;
-FcL->wData[21][76]=36;
-FcL->wData[21][77]=-169;
-FcL->wData[21][78]=123;
-FcL->wData[21][79]=211;
-FcL->wData[21][80]=-130;
-FcL->wData[22][0]=-165;
-FcL->wData[22][1]=-52;
-FcL->wData[22][2]=-147;
-FcL->wData[22][3]=142;
-FcL->wData[22][4]=-85;
-FcL->wData[22][5]=-22;
-FcL->wData[22][6]=-83;
-FcL->wData[22][7]=-230;
-FcL->wData[22][8]=-160;
-FcL->wData[22][9]=-186;
-FcL->wData[22][10]=-164;
-FcL->wData[22][11]=-226;
-FcL->wData[22][12]=113;
-FcL->wData[22][13]=-13;
-FcL->wData[22][14]=-208;
-FcL->wData[22][15]=-65;
-FcL->wData[22][16]=-51;
-FcL->wData[22][17]=-183;
-FcL->wData[22][18]=173;
-FcL->wData[22][19]=7;
-FcL->wData[22][20]=-176;
-FcL->wData[22][21]=86;
-FcL->wData[22][22]=-77;
-FcL->wData[22][23]=-187;
-FcL->wData[22][24]=-192;
-FcL->wData[22][25]=130;
-FcL->wData[22][26]=-60;
-FcL->wData[22][27]=131;
-FcL->wData[22][28]=-21;
-FcL->wData[22][29]=-154;
-FcL->wData[22][30]=-74;
-FcL->wData[22][31]=-39;
-FcL->wData[22][32]=-193;
-FcL->wData[22][33]=-113;
-FcL->wData[22][34]=29;
-FcL->wData[22][35]=-61;
-FcL->wData[22][36]=-252;
-FcL->wData[22][37]=-88;
-FcL->wData[22][38]=47;
-FcL->wData[22][39]=-97;
-FcL->wData[22][40]=114;
-FcL->wData[22][41]=100;
-FcL->wData[22][42]=138;
-FcL->wData[22][43]=-12;
-FcL->wData[22][44]=-62;
-FcL->wData[22][45]=-121;
-FcL->wData[22][46]=-6;
-FcL->wData[22][47]=35;
-FcL->wData[22][48]=-88;
-FcL->wData[22][49]=80;
-FcL->wData[22][50]=174;
-FcL->wData[22][51]=-113;
-FcL->wData[22][52]=-3;
-FcL->wData[22][53]=-19;
-FcL->wData[22][54]=-90;
-FcL->wData[22][55]=69;
-FcL->wData[22][56]=-103;
-FcL->wData[22][57]=-80;
-FcL->wData[22][58]=-123;
-FcL->wData[22][59]=-168;
-FcL->wData[22][60]=-195;
-FcL->wData[22][61]=24;
-FcL->wData[22][62]=105;
-FcL->wData[22][63]=-244;
-FcL->wData[22][64]=68;
-FcL->wData[22][65]=73;
-FcL->wData[22][66]=-104;
-FcL->wData[22][67]=151;
-FcL->wData[22][68]=94;
-FcL->wData[22][69]=65;
-FcL->wData[22][70]=112;
-FcL->wData[22][71]=153;
-FcL->wData[22][72]=-226;
-FcL->wData[22][73]=11;
-FcL->wData[22][74]=-137;
-FcL->wData[22][75]=-29;
-FcL->wData[22][76]=180;
-FcL->wData[22][77]=40;
-FcL->wData[22][78]=-155;
-FcL->wData[22][79]=-66;
-FcL->wData[22][80]=-233;
-FcL->wData[23][0]=79;
-FcL->wData[23][1]=-133;
-FcL->wData[23][2]=139;
-FcL->wData[23][3]=78;
-FcL->wData[23][4]=91;
-FcL->wData[23][5]=253;
-FcL->wData[23][6]=147;
-FcL->wData[23][7]=125;
-FcL->wData[23][8]=-103;
-FcL->wData[23][9]=-74;
-FcL->wData[23][10]=192;
-FcL->wData[23][11]=4;
-FcL->wData[23][12]=-17;
-FcL->wData[23][13]=-222;
-FcL->wData[23][14]=51;
-FcL->wData[23][15]=178;
-FcL->wData[23][16]=95;
-FcL->wData[23][17]=-294;
-FcL->wData[23][18]=301;
-FcL->wData[23][19]=247;
-FcL->wData[23][20]=169;
-FcL->wData[23][21]=225;
-FcL->wData[23][22]=18;
-FcL->wData[23][23]=-56;
-FcL->wData[23][24]=39;
-FcL->wData[23][25]=38;
-FcL->wData[23][26]=119;
-FcL->wData[23][27]=-265;
-FcL->wData[23][28]=-228;
-FcL->wData[23][29]=87;
-FcL->wData[23][30]=39;
-FcL->wData[23][31]=262;
-FcL->wData[23][32]=5;
-FcL->wData[23][33]=-96;
-FcL->wData[23][34]=146;
-FcL->wData[23][35]=-111;
-FcL->wData[23][36]=213;
-FcL->wData[23][37]=-362;
-FcL->wData[23][38]=140;
-FcL->wData[23][39]=79;
-FcL->wData[23][40]=-484;
-FcL->wData[23][41]=74;
-FcL->wData[23][42]=-158;
-FcL->wData[23][43]=-181;
-FcL->wData[23][44]=332;
-FcL->wData[23][45]=77;
-FcL->wData[23][46]=-142;
-FcL->wData[23][47]=-98;
-FcL->wData[23][48]=15;
-FcL->wData[23][49]=178;
-FcL->wData[23][50]=-151;
-FcL->wData[23][51]=109;
-FcL->wData[23][52]=-179;
-FcL->wData[23][53]=-22;
-FcL->wData[23][54]=-175;
-FcL->wData[23][55]=245;
-FcL->wData[23][56]=41;
-FcL->wData[23][57]=-58;
-FcL->wData[23][58]=-90;
-FcL->wData[23][59]=-103;
-FcL->wData[23][60]=338;
-FcL->wData[23][61]=-112;
-FcL->wData[23][62]=116;
-FcL->wData[23][63]=-126;
-FcL->wData[23][64]=82;
-FcL->wData[23][65]=196;
-FcL->wData[23][66]=-50;
-FcL->wData[23][67]=242;
-FcL->wData[23][68]=60;
-FcL->wData[23][69]=4;
-FcL->wData[23][70]=324;
-FcL->wData[23][71]=-139;
-FcL->wData[23][72]=2;
-FcL->wData[23][73]=170;
-FcL->wData[23][74]=97;
-FcL->wData[23][75]=-170;
-FcL->wData[23][76]=-70;
-FcL->wData[23][77]=-152;
-FcL->wData[23][78]=100;
-FcL->wData[23][79]=130;
-FcL->wData[23][80]=-19;
-FcL->wData[24][0]=-30;
-FcL->wData[24][1]=-121;
-FcL->wData[24][2]=173;
-FcL->wData[24][3]=358;
-FcL->wData[24][4]=71;
-FcL->wData[24][5]=124;
-FcL->wData[24][6]=-77;
-FcL->wData[24][7]=222;
-FcL->wData[24][8]=123;
-FcL->wData[24][9]=-372;
-FcL->wData[24][10]=-107;
-FcL->wData[24][11]=-42;
-FcL->wData[24][12]=175;
-FcL->wData[24][13]=93;
-FcL->wData[24][14]=93;
-FcL->wData[24][15]=128;
-FcL->wData[24][16]=-10;
-FcL->wData[24][17]=20;
-FcL->wData[24][18]=-3;
-FcL->wData[24][19]=-154;
-FcL->wData[24][20]=109;
-FcL->wData[24][21]=-49;
-FcL->wData[24][22]=162;
-FcL->wData[24][23]=78;
-FcL->wData[24][24]=123;
-FcL->wData[24][25]=177;
-FcL->wData[24][26]=158;
-FcL->wData[24][27]=126;
-FcL->wData[24][28]=142;
-FcL->wData[24][29]=-31;
-FcL->wData[24][30]=193;
-FcL->wData[24][31]=-63;
-FcL->wData[24][32]=66;
-FcL->wData[24][33]=-186;
-FcL->wData[24][34]=-108;
-FcL->wData[24][35]=301;
-FcL->wData[24][36]=-31;
-FcL->wData[24][37]=141;
-FcL->wData[24][38]=62;
-FcL->wData[24][39]=-158;
-FcL->wData[24][40]=-320;
-FcL->wData[24][41]=33;
-FcL->wData[24][42]=-137;
-FcL->wData[24][43]=-160;
-FcL->wData[24][44]=182;
-FcL->wData[24][45]=47;
-FcL->wData[24][46]=7;
-FcL->wData[24][47]=147;
-FcL->wData[24][48]=241;
-FcL->wData[24][49]=-186;
-FcL->wData[24][50]=-160;
-FcL->wData[24][51]=-100;
-FcL->wData[24][52]=9;
-FcL->wData[24][53]=157;
-FcL->wData[24][54]=-125;
-FcL->wData[24][55]=-174;
-FcL->wData[24][56]=187;
-FcL->wData[24][57]=29;
-FcL->wData[24][58]=128;
-FcL->wData[24][59]=12;
-FcL->wData[24][60]=-563;
-FcL->wData[24][61]=90;
-FcL->wData[24][62]=-176;
-FcL->wData[24][63]=-169;
-FcL->wData[24][64]=67;
-FcL->wData[24][65]=140;
-FcL->wData[24][66]=121;
-FcL->wData[24][67]=270;
-FcL->wData[24][68]=0;
-FcL->wData[24][69]=-203;
-FcL->wData[24][70]=14;
-FcL->wData[24][71]=68;
-FcL->wData[24][72]=-236;
-FcL->wData[24][73]=48;
-FcL->wData[24][74]=22;
-FcL->wData[24][75]=-15;
-FcL->wData[24][76]=-36;
-FcL->wData[24][77]=118;
-FcL->wData[24][78]=163;
-FcL->wData[24][79]=-67;
-FcL->wData[24][80]=-51;
-FcL->wData[25][0]=-404;
-FcL->wData[25][1]=-119;
-FcL->wData[25][2]=149;
-FcL->wData[25][3]=478;
-FcL->wData[25][4]=126;
-FcL->wData[25][5]=-13;
-FcL->wData[25][6]=-70;
-FcL->wData[25][7]=-311;
-FcL->wData[25][8]=89;
-FcL->wData[25][9]=362;
-FcL->wData[25][10]=-116;
-FcL->wData[25][11]=-219;
-FcL->wData[25][12]=336;
-FcL->wData[25][13]=212;
-FcL->wData[25][14]=-45;
-FcL->wData[25][15]=119;
-FcL->wData[25][16]=105;
-FcL->wData[25][17]=-37;
-FcL->wData[25][18]=147;
-FcL->wData[25][19]=-85;
-FcL->wData[25][20]=82;
-FcL->wData[25][21]=108;
-FcL->wData[25][22]=133;
-FcL->wData[25][23]=-272;
-FcL->wData[25][24]=95;
-FcL->wData[25][25]=48;
-FcL->wData[25][26]=-97;
-FcL->wData[25][27]=111;
-FcL->wData[25][28]=-19;
-FcL->wData[25][29]=-331;
-FcL->wData[25][30]=-103;
-FcL->wData[25][31]=-477;
-FcL->wData[25][32]=13;
-FcL->wData[25][33]=26;
-FcL->wData[25][34]=80;
-FcL->wData[25][35]=73;
-FcL->wData[25][36]=146;
-FcL->wData[25][37]=-76;
-FcL->wData[25][38]=78;
-FcL->wData[25][39]=-139;
-FcL->wData[25][40]=165;
-FcL->wData[25][41]=-40;
-FcL->wData[25][42]=47;
-FcL->wData[25][43]=177;
-FcL->wData[25][44]=24;
-FcL->wData[25][45]=-221;
-FcL->wData[25][46]=-323;
-FcL->wData[25][47]=4;
-FcL->wData[25][48]=-180;
-FcL->wData[25][49]=-134;
-FcL->wData[25][50]=25;
-FcL->wData[25][51]=-233;
-FcL->wData[25][52]=94;
-FcL->wData[25][53]=-97;
-FcL->wData[25][54]=-50;
-FcL->wData[25][55]=-8;
-FcL->wData[25][56]=-155;
-FcL->wData[25][57]=-23;
-FcL->wData[25][58]=0;
-FcL->wData[25][59]=31;
-FcL->wData[25][60]=-237;
-FcL->wData[25][61]=4;
-FcL->wData[25][62]=-29;
-FcL->wData[25][63]=18;
-FcL->wData[25][64]=-180;
-FcL->wData[25][65]=-165;
-FcL->wData[25][66]=60;
-FcL->wData[25][67]=57;
-FcL->wData[25][68]=45;
-FcL->wData[25][69]=-150;
-FcL->wData[25][70]=160;
-FcL->wData[25][71]=-116;
-FcL->wData[25][72]=-91;
-FcL->wData[25][73]=-123;
-FcL->wData[25][74]=-100;
-FcL->wData[25][75]=247;
-FcL->wData[25][76]=285;
-FcL->wData[25][77]=-161;
-FcL->wData[25][78]=311;
-FcL->wData[25][79]=-137;
-FcL->wData[25][80]=51;
-FcL->wData[26][0]=-83;
-FcL->wData[26][1]=-42;
-FcL->wData[26][2]=132;
-FcL->wData[26][3]=-330;
-FcL->wData[26][4]=175;
-FcL->wData[26][5]=-65;
-FcL->wData[26][6]=168;
-FcL->wData[26][7]=62;
-FcL->wData[26][8]=67;
-FcL->wData[26][9]=182;
-FcL->wData[26][10]=-104;
-FcL->wData[26][11]=-8;
-FcL->wData[26][12]=-229;
-FcL->wData[26][13]=33;
-FcL->wData[26][14]=185;
-FcL->wData[26][15]=-164;
-FcL->wData[26][16]=114;
-FcL->wData[26][17]=49;
-FcL->wData[26][18]=158;
-FcL->wData[26][19]=115;
-FcL->wData[26][20]=268;
-FcL->wData[26][21]=-84;
-FcL->wData[26][22]=41;
-FcL->wData[26][23]=40;
-FcL->wData[26][24]=-79;
-FcL->wData[26][25]=119;
-FcL->wData[26][26]=19;
-FcL->wData[26][27]=-54;
-FcL->wData[26][28]=-129;
-FcL->wData[26][29]=43;
-FcL->wData[26][30]=-127;
-FcL->wData[26][31]=102;
-FcL->wData[26][32]=-64;
-FcL->wData[26][33]=173;
-FcL->wData[26][34]=23;
-FcL->wData[26][35]=-193;
-FcL->wData[26][36]=118;
-FcL->wData[26][37]=-262;
-FcL->wData[26][38]=-331;
-FcL->wData[26][39]=-111;
-FcL->wData[26][40]=17;
-FcL->wData[26][41]=164;
-FcL->wData[26][42]=-306;
-FcL->wData[26][43]=-46;
-FcL->wData[26][44]=-28;
-FcL->wData[26][45]=-197;
-FcL->wData[26][46]=-110;
-FcL->wData[26][47]=-325;
-FcL->wData[26][48]=-67;
-FcL->wData[26][49]=233;
-FcL->wData[26][50]=56;
-FcL->wData[26][51]=-127;
-FcL->wData[26][52]=-74;
-FcL->wData[26][53]=-16;
-FcL->wData[26][54]=-51;
-FcL->wData[26][55]=45;
-FcL->wData[26][56]=124;
-FcL->wData[26][57]=-165;
-FcL->wData[26][58]=111;
-FcL->wData[26][59]=-105;
-FcL->wData[26][60]=220;
-FcL->wData[26][61]=-127;
-FcL->wData[26][62]=121;
-FcL->wData[26][63]=49;
-FcL->wData[26][64]=138;
-FcL->wData[26][65]=69;
-FcL->wData[26][66]=-21;
-FcL->wData[26][67]=-10;
-FcL->wData[26][68]=166;
-FcL->wData[26][69]=48;
-FcL->wData[26][70]=86;
-FcL->wData[26][71]=117;
-FcL->wData[26][72]=120;
-FcL->wData[26][73]=328;
-FcL->wData[26][74]=-154;
-FcL->wData[26][75]=-372;
-FcL->wData[26][76]=-362;
-FcL->wData[26][77]=60;
-FcL->wData[26][78]=-246;
-FcL->wData[26][79]=137;
-FcL->wData[26][80]=-496;
-FcL->wData[27][0]=100;
-FcL->wData[27][1]=48;
-FcL->wData[27][2]=72;
-FcL->wData[27][3]=101;
-FcL->wData[27][4]=75;
-FcL->wData[27][5]=-225;
-FcL->wData[27][6]=-404;
-FcL->wData[27][7]=86;
-FcL->wData[27][8]=-156;
-FcL->wData[27][9]=-161;
-FcL->wData[27][10]=-12;
-FcL->wData[27][11]=-142;
-FcL->wData[27][12]=16;
-FcL->wData[27][13]=-2;
-FcL->wData[27][14]=284;
-FcL->wData[27][15]=-274;
-FcL->wData[27][16]=74;
-FcL->wData[27][17]=94;
-FcL->wData[27][18]=-208;
-FcL->wData[27][19]=-67;
-FcL->wData[27][20]=-35;
-FcL->wData[27][21]=186;
-FcL->wData[27][22]=196;
-FcL->wData[27][23]=131;
-FcL->wData[27][24]=-205;
-FcL->wData[27][25]=33;
-FcL->wData[27][26]=-87;
-FcL->wData[27][27]=-1;
-FcL->wData[27][28]=-137;
-FcL->wData[27][29]=-53;
-FcL->wData[27][30]=-3;
-FcL->wData[27][31]=250;
-FcL->wData[27][32]=-6;
-FcL->wData[27][33]=-73;
-FcL->wData[27][34]=138;
-FcL->wData[27][35]=163;
-FcL->wData[27][36]=17;
-FcL->wData[27][37]=96;
-FcL->wData[27][38]=-126;
-FcL->wData[27][39]=159;
-FcL->wData[27][40]=14;
-FcL->wData[27][41]=55;
-FcL->wData[27][42]=363;
-FcL->wData[27][43]=-217;
-FcL->wData[27][44]=210;
-FcL->wData[27][45]=66;
-FcL->wData[27][46]=-107;
-FcL->wData[27][47]=-137;
-FcL->wData[27][48]=-267;
-FcL->wData[27][49]=139;
-FcL->wData[27][50]=-87;
-FcL->wData[27][51]=60;
-FcL->wData[27][52]=17;
-FcL->wData[27][53]=-125;
-FcL->wData[27][54]=-106;
-FcL->wData[27][55]=-21;
-FcL->wData[27][56]=227;
-FcL->wData[27][57]=107;
-FcL->wData[27][58]=43;
-FcL->wData[27][59]=119;
-FcL->wData[27][60]=246;
-FcL->wData[27][61]=9;
-FcL->wData[27][62]=50;
-FcL->wData[27][63]=-209;
-FcL->wData[27][64]=111;
-FcL->wData[27][65]=119;
-FcL->wData[27][66]=126;
-FcL->wData[27][67]=-269;
-FcL->wData[27][68]=-67;
-FcL->wData[27][69]=247;
-FcL->wData[27][70]=-8;
-FcL->wData[27][71]=272;
-FcL->wData[27][72]=-31;
-FcL->wData[27][73]=-6;
-FcL->wData[27][74]=-88;
-FcL->wData[27][75]=-129;
-FcL->wData[27][76]=112;
-FcL->wData[27][77]=83;
-FcL->wData[27][78]=286;
-FcL->wData[27][79]=145;
-FcL->wData[27][80]=88;
-FcL->wData[28][0]=-98;
-FcL->wData[28][1]=36;
-FcL->wData[28][2]=309;
-FcL->wData[28][3]=69;
-FcL->wData[28][4]=210;
-FcL->wData[28][5]=186;
-FcL->wData[28][6]=-187;
-FcL->wData[28][7]=178;
-FcL->wData[28][8]=71;
-FcL->wData[28][9]=3;
-FcL->wData[28][10]=-136;
-FcL->wData[28][11]=85;
-FcL->wData[28][12]=-38;
-FcL->wData[28][13]=-198;
-FcL->wData[28][14]=-138;
-FcL->wData[28][15]=-108;
-FcL->wData[28][16]=-32;
-FcL->wData[28][17]=-204;
-FcL->wData[28][18]=205;
-FcL->wData[28][19]=111;
-FcL->wData[28][20]=-90;
-FcL->wData[28][21]=-68;
-FcL->wData[28][22]=-18;
-FcL->wData[28][23]=-157;
-FcL->wData[28][24]=63;
-FcL->wData[28][25]=83;
-FcL->wData[28][26]=-198;
-FcL->wData[28][27]=-79;
-FcL->wData[28][28]=-215;
-FcL->wData[28][29]=293;
-FcL->wData[28][30]=130;
-FcL->wData[28][31]=-15;
-FcL->wData[28][32]=129;
-FcL->wData[28][33]=219;
-FcL->wData[28][34]=-112;
-FcL->wData[28][35]=19;
-FcL->wData[28][36]=-175;
-FcL->wData[28][37]=-145;
-FcL->wData[28][38]=202;
-FcL->wData[28][39]=-114;
-FcL->wData[28][40]=-284;
-FcL->wData[28][41]=28;
-FcL->wData[28][42]=-89;
-FcL->wData[28][43]=-34;
-FcL->wData[28][44]=244;
-FcL->wData[28][45]=-107;
-FcL->wData[28][46]=-79;
-FcL->wData[28][47]=180;
-FcL->wData[28][48]=82;
-FcL->wData[28][49]=231;
-FcL->wData[28][50]=-158;
-FcL->wData[28][51]=204;
-FcL->wData[28][52]=-282;
-FcL->wData[28][53]=46;
-FcL->wData[28][54]=-11;
-FcL->wData[28][55]=196;
-FcL->wData[28][56]=183;
-FcL->wData[28][57]=27;
-FcL->wData[28][58]=-29;
-FcL->wData[28][59]=-175;
-FcL->wData[28][60]=499;
-FcL->wData[28][61]=-223;
-FcL->wData[28][62]=119;
-FcL->wData[28][63]=-56;
-FcL->wData[28][64]=83;
-FcL->wData[28][65]=135;
-FcL->wData[28][66]=-101;
-FcL->wData[28][67]=157;
-FcL->wData[28][68]=77;
-FcL->wData[28][69]=87;
-FcL->wData[28][70]=325;
-FcL->wData[28][71]=152;
-FcL->wData[28][72]=-19;
-FcL->wData[28][73]=114;
-FcL->wData[28][74]=-110;
-FcL->wData[28][75]=9;
-FcL->wData[28][76]=267;
-FcL->wData[28][77]=287;
-FcL->wData[28][78]=210;
-FcL->wData[28][79]=7;
-FcL->wData[28][80]=121;
-FcL->wData[29][0]=0;
-FcL->wData[29][1]=129;
-FcL->wData[29][2]=-204;
-FcL->wData[29][3]=135;
-FcL->wData[29][4]=-236;
-FcL->wData[29][5]=150;
-FcL->wData[29][6]=188;
-FcL->wData[29][7]=-221;
-FcL->wData[29][8]=63;
-FcL->wData[29][9]=-165;
-FcL->wData[29][10]=87;
-FcL->wData[29][11]=-126;
-FcL->wData[29][12]=-100;
-FcL->wData[29][13]=117;
-FcL->wData[29][14]=13;
-FcL->wData[29][15]=-74;
-FcL->wData[29][16]=-12;
-FcL->wData[29][17]=2;
-FcL->wData[29][18]=-4;
-FcL->wData[29][19]=143;
-FcL->wData[29][20]=3;
-FcL->wData[29][21]=120;
-FcL->wData[29][22]=-13;
-FcL->wData[29][23]=-217;
-FcL->wData[29][24]=-56;
-FcL->wData[29][25]=-1;
-FcL->wData[29][26]=-103;
-FcL->wData[29][27]=-196;
-FcL->wData[29][28]=43;
-FcL->wData[29][29]=169;
-FcL->wData[29][30]=13;
-FcL->wData[29][31]=-106;
-FcL->wData[29][32]=-126;
-FcL->wData[29][33]=-213;
-FcL->wData[29][34]=19;
-FcL->wData[29][35]=-104;
-FcL->wData[29][36]=54;
-FcL->wData[29][37]=65;
-FcL->wData[29][38]=-129;
-FcL->wData[29][39]=119;
-FcL->wData[29][40]=-186;
-FcL->wData[29][41]=-137;
-FcL->wData[29][42]=113;
-FcL->wData[29][43]=-87;
-FcL->wData[29][44]=49;
-FcL->wData[29][45]=-255;
-FcL->wData[29][46]=-142;
-FcL->wData[29][47]=145;
-FcL->wData[29][48]=-170;
-FcL->wData[29][49]=-215;
-FcL->wData[29][50]=-218;
-FcL->wData[29][51]=-10;
-FcL->wData[29][52]=174;
-FcL->wData[29][53]=-91;
-FcL->wData[29][54]=-165;
-FcL->wData[29][55]=107;
-FcL->wData[29][56]=80;
-FcL->wData[29][57]=-76;
-FcL->wData[29][58]=168;
-FcL->wData[29][59]=153;
-FcL->wData[29][60]=-169;
-FcL->wData[29][61]=-50;
-FcL->wData[29][62]=20;
-FcL->wData[29][63]=188;
-FcL->wData[29][64]=87;
-FcL->wData[29][65]=-104;
-FcL->wData[29][66]=-258;
-FcL->wData[29][67]=-206;
-FcL->wData[29][68]=-64;
-FcL->wData[29][69]=-217;
-FcL->wData[29][70]=37;
-FcL->wData[29][71]=-186;
-FcL->wData[29][72]=1;
-FcL->wData[29][73]=-162;
-FcL->wData[29][74]=178;
-FcL->wData[29][75]=-35;
-FcL->wData[29][76]=-132;
-FcL->wData[29][77]=-181;
-FcL->wData[29][78]=187;
-FcL->wData[29][79]=-80;
-FcL->wData[29][80]=175;
-FcL->wData[30][0]=-103;
-FcL->wData[30][1]=90;
-FcL->wData[30][2]=225;
-FcL->wData[30][3]=-483;
-FcL->wData[30][4]=273;
-FcL->wData[30][5]=112;
-FcL->wData[30][6]=506;
-FcL->wData[30][7]=41;
-FcL->wData[30][8]=41;
-FcL->wData[30][9]=90;
-FcL->wData[30][10]=-63;
-FcL->wData[30][11]=16;
-FcL->wData[30][12]=-31;
-FcL->wData[30][13]=-22;
-FcL->wData[30][14]=-143;
-FcL->wData[30][15]=199;
-FcL->wData[30][16]=143;
-FcL->wData[30][17]=-132;
-FcL->wData[30][18]=294;
-FcL->wData[30][19]=208;
-FcL->wData[30][20]=162;
-FcL->wData[30][21]=-29;
-FcL->wData[30][22]=-98;
-FcL->wData[30][23]=-219;
-FcL->wData[30][24]=85;
-FcL->wData[30][25]=36;
-FcL->wData[30][26]=14;
-FcL->wData[30][27]=243;
-FcL->wData[30][28]=40;
-FcL->wData[30][29]=12;
-FcL->wData[30][30]=152;
-FcL->wData[30][31]=-29;
-FcL->wData[30][32]=-220;
-FcL->wData[30][33]=-2;
-FcL->wData[30][34]=-60;
-FcL->wData[30][35]=-174;
-FcL->wData[30][36]=-229;
-FcL->wData[30][37]=-44;
-FcL->wData[30][38]=-110;
-FcL->wData[30][39]=-93;
-FcL->wData[30][40]=160;
-FcL->wData[30][41]=175;
-FcL->wData[30][42]=251;
-FcL->wData[30][43]=127;
-FcL->wData[30][44]=-243;
-FcL->wData[30][45]=234;
-FcL->wData[30][46]=130;
-FcL->wData[30][47]=77;
-FcL->wData[30][48]=488;
-FcL->wData[30][49]=261;
-FcL->wData[30][50]=-37;
-FcL->wData[30][51]=102;
-FcL->wData[30][52]=123;
-FcL->wData[30][53]=5;
-FcL->wData[30][54]=-120;
-FcL->wData[30][55]=-87;
-FcL->wData[30][56]=2;
-FcL->wData[30][57]=-6;
-FcL->wData[30][58]=141;
-FcL->wData[30][59]=6;
-FcL->wData[30][60]=-206;
-FcL->wData[30][61]=95;
-FcL->wData[30][62]=-16;
-FcL->wData[30][63]=-187;
-FcL->wData[30][64]=15;
-FcL->wData[30][65]=-155;
-FcL->wData[30][66]=211;
-FcL->wData[30][67]=-168;
-FcL->wData[30][68]=166;
-FcL->wData[30][69]=48;
-FcL->wData[30][70]=-211;
-FcL->wData[30][71]=132;
-FcL->wData[30][72]=119;
-FcL->wData[30][73]=392;
-FcL->wData[30][74]=-58;
-FcL->wData[30][75]=69;
-FcL->wData[30][76]=-269;
-FcL->wData[30][77]=-184;
-FcL->wData[30][78]=40;
-FcL->wData[30][79]=-136;
-FcL->wData[30][80]=1;
-FcL->wData[31][0]=-164;
-FcL->wData[31][1]=-113;
-FcL->wData[31][2]=-103;
-FcL->wData[31][3]=-499;
-FcL->wData[31][4]=-357;
-FcL->wData[31][5]=51;
-FcL->wData[31][6]=187;
-FcL->wData[31][7]=134;
-FcL->wData[31][8]=-186;
-FcL->wData[31][9]=121;
-FcL->wData[31][10]=118;
-FcL->wData[31][11]=67;
-FcL->wData[31][12]=69;
-FcL->wData[31][13]=-421;
-FcL->wData[31][14]=-319;
-FcL->wData[31][15]=50;
-FcL->wData[31][16]=50;
-FcL->wData[31][17]=-149;
-FcL->wData[31][18]=312;
-FcL->wData[31][19]=133;
-FcL->wData[31][20]=70;
-FcL->wData[31][21]=592;
-FcL->wData[31][22]=-420;
-FcL->wData[31][23]=-455;
-FcL->wData[31][24]=-45;
-FcL->wData[31][25]=-18;
-FcL->wData[31][26]=44;
-FcL->wData[31][27]=11;
-FcL->wData[31][28]=-58;
-FcL->wData[31][29]=-59;
-FcL->wData[31][30]=-111;
-FcL->wData[31][31]=-19;
-FcL->wData[31][32]=97;
-FcL->wData[31][33]=183;
-FcL->wData[31][34]=106;
-FcL->wData[31][35]=-132;
-FcL->wData[31][36]=-134;
-FcL->wData[31][37]=6;
-FcL->wData[31][38]=-127;
-FcL->wData[31][39]=-41;
-FcL->wData[31][40]=143;
-FcL->wData[31][41]=20;
-FcL->wData[31][42]=389;
-FcL->wData[31][43]=-140;
-FcL->wData[31][44]=320;
-FcL->wData[31][45]=-114;
-FcL->wData[31][46]=22;
-FcL->wData[31][47]=28;
-FcL->wData[31][48]=4;
-FcL->wData[31][49]=160;
-FcL->wData[31][50]=137;
-FcL->wData[31][51]=297;
-FcL->wData[31][52]=-65;
-FcL->wData[31][53]=134;
-FcL->wData[31][54]=128;
-FcL->wData[31][55]=-395;
-FcL->wData[31][56]=-135;
-FcL->wData[31][57]=7;
-FcL->wData[31][58]=-78;
-FcL->wData[31][59]=40;
-FcL->wData[31][60]=310;
-FcL->wData[31][61]=-16;
-FcL->wData[31][62]=-12;
-FcL->wData[31][63]=195;
-FcL->wData[31][64]=-35;
-FcL->wData[31][65]=75;
-FcL->wData[31][66]=91;
-FcL->wData[31][67]=-105;
-FcL->wData[31][68]=-46;
-FcL->wData[31][69]=-49;
-FcL->wData[31][70]=17;
-FcL->wData[31][71]=85;
-FcL->wData[31][72]=99;
-FcL->wData[31][73]=-39;
-FcL->wData[31][74]=-144;
-FcL->wData[31][75]=-328;
-FcL->wData[31][76]=-332;
-FcL->wData[31][77]=24;
-FcL->wData[31][78]=-50;
-FcL->wData[31][79]=147;
-FcL->wData[31][80]=27;
-FcL->wData[32][0]=9;
-FcL->wData[32][1]=7;
-FcL->wData[32][2]=79;
-FcL->wData[32][3]=83;
-FcL->wData[32][4]=-240;
-FcL->wData[32][5]=44;
-FcL->wData[32][6]=-137;
-FcL->wData[32][7]=-104;
-FcL->wData[32][8]=197;
-FcL->wData[32][9]=62;
-FcL->wData[32][10]=9;
-FcL->wData[32][11]=113;
-FcL->wData[32][12]=216;
-FcL->wData[32][13]=-87;
-FcL->wData[32][14]=134;
-FcL->wData[32][15]=-145;
-FcL->wData[32][16]=-200;
-FcL->wData[32][17]=-93;
-FcL->wData[32][18]=-109;
-FcL->wData[32][19]=-169;
-FcL->wData[32][20]=7;
-FcL->wData[32][21]=29;
-FcL->wData[32][22]=181;
-FcL->wData[32][23]=1;
-FcL->wData[32][24]=-45;
-FcL->wData[32][25]=-77;
-FcL->wData[32][26]=135;
-FcL->wData[32][27]=73;
-FcL->wData[32][28]=-30;
-FcL->wData[32][29]=99;
-FcL->wData[32][30]=51;
-FcL->wData[32][31]=-28;
-FcL->wData[32][32]=-10;
-FcL->wData[32][33]=55;
-FcL->wData[32][34]=183;
-FcL->wData[32][35]=-11;
-FcL->wData[32][36]=77;
-FcL->wData[32][37]=59;
-FcL->wData[32][38]=220;
-FcL->wData[32][39]=-45;
-FcL->wData[32][40]=219;
-FcL->wData[32][41]=-133;
-FcL->wData[32][42]=48;
-FcL->wData[32][43]=-308;
-FcL->wData[32][44]=-78;
-FcL->wData[32][45]=131;
-FcL->wData[32][46]=160;
-FcL->wData[32][47]=-157;
-FcL->wData[32][48]=-18;
-FcL->wData[32][49]=39;
-FcL->wData[32][50]=238;
-FcL->wData[32][51]=18;
-FcL->wData[32][52]=-48;
-FcL->wData[32][53]=-51;
-FcL->wData[32][54]=-187;
-FcL->wData[32][55]=15;
-FcL->wData[32][56]=-125;
-FcL->wData[32][57]=89;
-FcL->wData[32][58]=-177;
-FcL->wData[32][59]=181;
-FcL->wData[32][60]=319;
-FcL->wData[32][61]=-153;
-FcL->wData[32][62]=65;
-FcL->wData[32][63]=191;
-FcL->wData[32][64]=-61;
-FcL->wData[32][65]=-40;
-FcL->wData[32][66]=73;
-FcL->wData[32][67]=-594;
-FcL->wData[32][68]=129;
-FcL->wData[32][69]=98;
-FcL->wData[32][70]=-12;
-FcL->wData[32][71]=116;
-FcL->wData[32][72]=-60;
-FcL->wData[32][73]=85;
-FcL->wData[32][74]=44;
-FcL->wData[32][75]=-220;
-FcL->wData[32][76]=-269;
-FcL->wData[32][77]=86;
-FcL->wData[32][78]=-92;
-FcL->wData[32][79]=-129;
-FcL->wData[32][80]=-55;
-FcL->wData[33][0]=-58;
-FcL->wData[33][1]=-127;
-FcL->wData[33][2]=68;
-FcL->wData[33][3]=5;
-FcL->wData[33][4]=259;
-FcL->wData[33][5]=94;
-FcL->wData[33][6]=-156;
-FcL->wData[33][7]=-216;
-FcL->wData[33][8]=190;
-FcL->wData[33][9]=41;
-FcL->wData[33][10]=-113;
-FcL->wData[33][11]=218;
-FcL->wData[33][12]=122;
-FcL->wData[33][13]=302;
-FcL->wData[33][14]=93;
-FcL->wData[33][15]=104;
-FcL->wData[33][16]=108;
-FcL->wData[33][17]=277;
-FcL->wData[33][18]=-57;
-FcL->wData[33][19]=11;
-FcL->wData[33][20]=-45;
-FcL->wData[33][21]=14;
-FcL->wData[33][22]=-188;
-FcL->wData[33][23]=21;
-FcL->wData[33][24]=-37;
-FcL->wData[33][25]=55;
-FcL->wData[33][26]=-77;
-FcL->wData[33][27]=72;
-FcL->wData[33][28]=23;
-FcL->wData[33][29]=-117;
-FcL->wData[33][30]=400;
-FcL->wData[33][31]=157;
-FcL->wData[33][32]=-176;
-FcL->wData[33][33]=405;
-FcL->wData[33][34]=-4;
-FcL->wData[33][35]=190;
-FcL->wData[33][36]=17;
-FcL->wData[33][37]=-156;
-FcL->wData[33][38]=13;
-FcL->wData[33][39]=191;
-FcL->wData[33][40]=68;
-FcL->wData[33][41]=-12;
-FcL->wData[33][42]=5;
-FcL->wData[33][43]=-84;
-FcL->wData[33][44]=-24;
-FcL->wData[33][45]=-138;
-FcL->wData[33][46]=137;
-FcL->wData[33][47]=-103;
-FcL->wData[33][48]=-102;
-FcL->wData[33][49]=-61;
-FcL->wData[33][50]=-128;
-FcL->wData[33][51]=53;
-FcL->wData[33][52]=-21;
-FcL->wData[33][53]=-132;
-FcL->wData[33][54]=90;
-FcL->wData[33][55]=424;
-FcL->wData[33][56]=191;
-FcL->wData[33][57]=143;
-FcL->wData[33][58]=-79;
-FcL->wData[33][59]=-55;
-FcL->wData[33][60]=-40;
-FcL->wData[33][61]=-293;
-FcL->wData[33][62]=241;
-FcL->wData[33][63]=224;
-FcL->wData[33][64]=149;
-FcL->wData[33][65]=-95;
-FcL->wData[33][66]=-124;
-FcL->wData[33][67]=290;
-FcL->wData[33][68]=104;
-FcL->wData[33][69]=153;
-FcL->wData[33][70]=65;
-FcL->wData[33][71]=-127;
-FcL->wData[33][72]=-133;
-FcL->wData[33][73]=71;
-FcL->wData[33][74]=125;
-FcL->wData[33][75]=-228;
-FcL->wData[33][76]=139;
-FcL->wData[33][77]=118;
-FcL->wData[33][78]=198;
-FcL->wData[33][79]=39;
-FcL->wData[33][80]=140;
-FcL->wData[34][0]=67;
-FcL->wData[34][1]=177;
-FcL->wData[34][2]=90;
-FcL->wData[34][3]=-370;
-FcL->wData[34][4]=12;
-FcL->wData[34][5]=25;
-FcL->wData[34][6]=-7;
-FcL->wData[34][7]=144;
-FcL->wData[34][8]=-41;
-FcL->wData[34][9]=-161;
-FcL->wData[34][10]=57;
-FcL->wData[34][11]=164;
-FcL->wData[34][12]=-159;
-FcL->wData[34][13]=115;
-FcL->wData[34][14]=64;
-FcL->wData[34][15]=49;
-FcL->wData[34][16]=36;
-FcL->wData[34][17]=-169;
-FcL->wData[34][18]=-47;
-FcL->wData[34][19]=66;
-FcL->wData[34][20]=-49;
-FcL->wData[34][21]=-213;
-FcL->wData[34][22]=193;
-FcL->wData[34][23]=213;
-FcL->wData[34][24]=10;
-FcL->wData[34][25]=-3;
-FcL->wData[34][26]=53;
-FcL->wData[34][27]=-136;
-FcL->wData[34][28]=48;
-FcL->wData[34][29]=-33;
-FcL->wData[34][30]=-396;
-FcL->wData[34][31]=-185;
-FcL->wData[34][32]=244;
-FcL->wData[34][33]=-751;
-FcL->wData[34][34]=152;
-FcL->wData[34][35]=-43;
-FcL->wData[34][36]=27;
-FcL->wData[34][37]=-48;
-FcL->wData[34][38]=-11;
-FcL->wData[34][39]=-243;
-FcL->wData[34][40]=-26;
-FcL->wData[34][41]=165;
-FcL->wData[34][42]=-162;
-FcL->wData[34][43]=-141;
-FcL->wData[34][44]=-160;
-FcL->wData[34][45]=265;
-FcL->wData[34][46]=80;
-FcL->wData[34][47]=-46;
-FcL->wData[34][48]=50;
-FcL->wData[34][49]=-229;
-FcL->wData[34][50]=51;
-FcL->wData[34][51]=41;
-FcL->wData[34][52]=55;
-FcL->wData[34][53]=-106;
-FcL->wData[34][54]=-41;
-FcL->wData[34][55]=-360;
-FcL->wData[34][56]=211;
-FcL->wData[34][57]=16;
-FcL->wData[34][58]=190;
-FcL->wData[34][59]=-46;
-FcL->wData[34][60]=-779;
-FcL->wData[34][61]=228;
-FcL->wData[34][62]=-85;
-FcL->wData[34][63]=-194;
-FcL->wData[34][64]=-104;
-FcL->wData[34][65]=190;
-FcL->wData[34][66]=97;
-FcL->wData[34][67]=123;
-FcL->wData[34][68]=28;
-FcL->wData[34][69]=-194;
-FcL->wData[34][70]=-117;
-FcL->wData[34][71]=-9;
-FcL->wData[34][72]=-121;
-FcL->wData[34][73]=191;
-FcL->wData[34][74]=-35;
-FcL->wData[34][75]=242;
-FcL->wData[34][76]=-145;
-FcL->wData[34][77]=-41;
-FcL->wData[34][78]=52;
-FcL->wData[34][79]=-108;
-FcL->wData[34][80]=136;
-FcL->wData[35][0]=-246;
-FcL->wData[35][1]=273;
-FcL->wData[35][2]=52;
-FcL->wData[35][3]=-495;
-FcL->wData[35][4]=-252;
-FcL->wData[35][5]=76;
-FcL->wData[35][6]=-134;
-FcL->wData[35][7]=32;
-FcL->wData[35][8]=-72;
-FcL->wData[35][9]=48;
-FcL->wData[35][10]=133;
-FcL->wData[35][11]=91;
-FcL->wData[35][12]=-129;
-FcL->wData[35][13]=48;
-FcL->wData[35][14]=21;
-FcL->wData[35][15]=-67;
-FcL->wData[35][16]=43;
-FcL->wData[35][17]=-73;
-FcL->wData[35][18]=12;
-FcL->wData[35][19]=-55;
-FcL->wData[35][20]=-5;
-FcL->wData[35][21]=94;
-FcL->wData[35][22]=33;
-FcL->wData[35][23]=110;
-FcL->wData[35][24]=-19;
-FcL->wData[35][25]=47;
-FcL->wData[35][26]=-194;
-FcL->wData[35][27]=-52;
-FcL->wData[35][28]=24;
-FcL->wData[35][29]=133;
-FcL->wData[35][30]=146;
-FcL->wData[35][31]=86;
-FcL->wData[35][32]=166;
-FcL->wData[35][33]=96;
-FcL->wData[35][34]=140;
-FcL->wData[35][35]=107;
-FcL->wData[35][36]=-237;
-FcL->wData[35][37]=-12;
-FcL->wData[35][38]=-84;
-FcL->wData[35][39]=45;
-FcL->wData[35][40]=-139;
-FcL->wData[35][41]=-144;
-FcL->wData[35][42]=124;
-FcL->wData[35][43]=30;
-FcL->wData[35][44]=204;
-FcL->wData[35][45]=165;
-FcL->wData[35][46]=99;
-FcL->wData[35][47]=-84;
-FcL->wData[35][48]=105;
-FcL->wData[35][49]=-461;
-FcL->wData[35][50]=-132;
-FcL->wData[35][51]=-192;
-FcL->wData[35][52]=170;
-FcL->wData[35][53]=-69;
-FcL->wData[35][54]=116;
-FcL->wData[35][55]=138;
-FcL->wData[35][56]=-121;
-FcL->wData[35][57]=-92;
-FcL->wData[35][58]=-66;
-FcL->wData[35][59]=14;
-FcL->wData[35][60]=-81;
-FcL->wData[35][61]=82;
-FcL->wData[35][62]=-147;
-FcL->wData[35][63]=39;
-FcL->wData[35][64]=-83;
-FcL->wData[35][65]=-164;
-FcL->wData[35][66]=69;
-FcL->wData[35][67]=112;
-FcL->wData[35][68]=3;
-FcL->wData[35][69]=89;
-FcL->wData[35][70]=138;
-FcL->wData[35][71]=-55;
-FcL->wData[35][72]=-144;
-FcL->wData[35][73]=55;
-FcL->wData[35][74]=70;
-FcL->wData[35][75]=-128;
-FcL->wData[35][76]=117;
-FcL->wData[35][77]=35;
-FcL->wData[35][78]=57;
-FcL->wData[35][79]=156;
-FcL->wData[35][80]=80;
-FcL->wData[36][0]=-77;
-FcL->wData[36][1]=207;
-FcL->wData[36][2]=-251;
-FcL->wData[36][3]=-395;
-FcL->wData[36][4]=-478;
-FcL->wData[36][5]=199;
-FcL->wData[36][6]=-22;
-FcL->wData[36][7]=130;
-FcL->wData[36][8]=87;
-FcL->wData[36][9]=-22;
-FcL->wData[36][10]=168;
-FcL->wData[36][11]=16;
-FcL->wData[36][12]=-204;
-FcL->wData[36][13]=-98;
-FcL->wData[36][14]=-207;
-FcL->wData[36][15]=115;
-FcL->wData[36][16]=55;
-FcL->wData[36][17]=-236;
-FcL->wData[36][18]=-8;
-FcL->wData[36][19]=-184;
-FcL->wData[36][20]=-39;
-FcL->wData[36][21]=189;
-FcL->wData[36][22]=90;
-FcL->wData[36][23]=4;
-FcL->wData[36][24]=227;
-FcL->wData[36][25]=-136;
-FcL->wData[36][26]=35;
-FcL->wData[36][27]=240;
-FcL->wData[36][28]=20;
-FcL->wData[36][29]=132;
-FcL->wData[36][30]=-286;
-FcL->wData[36][31]=-187;
-FcL->wData[36][32]=141;
-FcL->wData[36][33]=-775;
-FcL->wData[36][34]=410;
-FcL->wData[36][35]=-45;
-FcL->wData[36][36]=-146;
-FcL->wData[36][37]=373;
-FcL->wData[36][38]=-216;
-FcL->wData[36][39]=-254;
-FcL->wData[36][40]=416;
-FcL->wData[36][41]=-271;
-FcL->wData[36][42]=254;
-FcL->wData[36][43]=93;
-FcL->wData[36][44]=-81;
-FcL->wData[36][45]=-44;
-FcL->wData[36][46]=206;
-FcL->wData[36][47]=-8;
-FcL->wData[36][48]=-172;
-FcL->wData[36][49]=-417;
-FcL->wData[36][50]=278;
-FcL->wData[36][51]=69;
-FcL->wData[36][52]=296;
-FcL->wData[36][53]=-75;
-FcL->wData[36][54]=-226;
-FcL->wData[36][55]=-285;
-FcL->wData[36][56]=-337;
-FcL->wData[36][57]=44;
-FcL->wData[36][58]=-107;
-FcL->wData[36][59]=259;
-FcL->wData[36][60]=-119;
-FcL->wData[36][61]=-142;
-FcL->wData[36][62]=-123;
-FcL->wData[36][63]=72;
-FcL->wData[36][64]=-277;
-FcL->wData[36][65]=-69;
-FcL->wData[36][66]=-81;
-FcL->wData[36][67]=33;
-FcL->wData[36][68]=28;
-FcL->wData[36][69]=-427;
-FcL->wData[36][70]=183;
-FcL->wData[36][71]=-72;
-FcL->wData[36][72]=-144;
-FcL->wData[36][73]=-138;
-FcL->wData[36][74]=-64;
-FcL->wData[36][75]=158;
-FcL->wData[36][76]=2;
-FcL->wData[36][77]=9;
-FcL->wData[36][78]=-221;
-FcL->wData[36][79]=-95;
-FcL->wData[36][80]=48;
-FcL->wData[37][0]=-62;
-FcL->wData[37][1]=-220;
-FcL->wData[37][2]=-128;
-FcL->wData[37][3]=-187;
-FcL->wData[37][4]=144;
-FcL->wData[37][5]=-142;
-FcL->wData[37][6]=-133;
-FcL->wData[37][7]=-222;
-FcL->wData[37][8]=30;
-FcL->wData[37][9]=9;
-FcL->wData[37][10]=-90;
-FcL->wData[37][11]=-227;
-FcL->wData[37][12]=157;
-FcL->wData[37][13]=11;
-FcL->wData[37][14]=-182;
-FcL->wData[37][15]=81;
-FcL->wData[37][16]=179;
-FcL->wData[37][17]=147;
-FcL->wData[37][18]=126;
-FcL->wData[37][19]=145;
-FcL->wData[37][20]=6;
-FcL->wData[37][21]=-211;
-FcL->wData[37][22]=-59;
-FcL->wData[37][23]=3;
-FcL->wData[37][24]=-78;
-FcL->wData[37][25]=166;
-FcL->wData[37][26]=-167;
-FcL->wData[37][27]=-217;
-FcL->wData[37][28]=-121;
-FcL->wData[37][29]=-49;
-FcL->wData[37][30]=-190;
-FcL->wData[37][31]=142;
-FcL->wData[37][32]=191;
-FcL->wData[37][33]=-181;
-FcL->wData[37][34]=-168;
-FcL->wData[37][35]=201;
-FcL->wData[37][36]=-232;
-FcL->wData[37][37]=44;
-FcL->wData[37][38]=-153;
-FcL->wData[37][39]=-128;
-FcL->wData[37][40]=93;
-FcL->wData[37][41]=141;
-FcL->wData[37][42]=-34;
-FcL->wData[37][43]=-104;
-FcL->wData[37][44]=169;
-FcL->wData[37][45]=-11;
-FcL->wData[37][46]=58;
-FcL->wData[37][47]=-11;
-FcL->wData[37][48]=-191;
-FcL->wData[37][49]=-10;
-FcL->wData[37][50]=-45;
-FcL->wData[37][51]=54;
-FcL->wData[37][52]=85;
-FcL->wData[37][53]=-142;
-FcL->wData[37][54]=-189;
-FcL->wData[37][55]=62;
-FcL->wData[37][56]=-220;
-FcL->wData[37][57]=50;
-FcL->wData[37][58]=54;
-FcL->wData[37][59]=-128;
-FcL->wData[37][60]=52;
-FcL->wData[37][61]=-22;
-FcL->wData[37][62]=-132;
-FcL->wData[37][63]=-4;
-FcL->wData[37][64]=-182;
-FcL->wData[37][65]=-47;
-FcL->wData[37][66]=-23;
-FcL->wData[37][67]=-149;
-FcL->wData[37][68]=36;
-FcL->wData[37][69]=-89;
-FcL->wData[37][70]=-10;
-FcL->wData[37][71]=25;
-FcL->wData[37][72]=-122;
-FcL->wData[37][73]=-178;
-FcL->wData[37][74]=-70;
-FcL->wData[37][75]=-189;
-FcL->wData[37][76]=42;
-FcL->wData[37][77]=-242;
-FcL->wData[37][78]=148;
-FcL->wData[37][79]=-95;
-FcL->wData[37][80]=20;
-FcL->wData[38][0]=134;
-FcL->wData[38][1]=-45;
-FcL->wData[38][2]=-52;
-FcL->wData[38][3]=-79;
-FcL->wData[38][4]=-161;
-FcL->wData[38][5]=2;
-FcL->wData[38][6]=-255;
-FcL->wData[38][7]=169;
-FcL->wData[38][8]=-161;
-FcL->wData[38][9]=-171;
-FcL->wData[38][10]=85;
-FcL->wData[38][11]=-188;
-FcL->wData[38][12]=-150;
-FcL->wData[38][13]=-48;
-FcL->wData[38][14]=69;
-FcL->wData[38][15]=274;
-FcL->wData[38][16]=37;
-FcL->wData[38][17]=20;
-FcL->wData[38][18]=78;
-FcL->wData[38][19]=-150;
-FcL->wData[38][20]=61;
-FcL->wData[38][21]=30;
-FcL->wData[38][22]=9;
-FcL->wData[38][23]=18;
-FcL->wData[38][24]=-116;
-FcL->wData[38][25]=60;
-FcL->wData[38][26]=-280;
-FcL->wData[38][27]=11;
-FcL->wData[38][28]=41;
-FcL->wData[38][29]=172;
-FcL->wData[38][30]=-32;
-FcL->wData[38][31]=265;
-FcL->wData[38][32]=212;
-FcL->wData[38][33]=-135;
-FcL->wData[38][34]=270;
-FcL->wData[38][35]=288;
-FcL->wData[38][36]=64;
-FcL->wData[38][37]=-201;
-FcL->wData[38][38]=157;
-FcL->wData[38][39]=95;
-FcL->wData[38][40]=-50;
-FcL->wData[38][41]=55;
-FcL->wData[38][42]=-58;
-FcL->wData[38][43]=-198;
-FcL->wData[38][44]=226;
-FcL->wData[38][45]=-48;
-FcL->wData[38][46]=-127;
-FcL->wData[38][47]=78;
-FcL->wData[38][48]=44;
-FcL->wData[38][49]=-11;
-FcL->wData[38][50]=29;
-FcL->wData[38][51]=73;
-FcL->wData[38][52]=17;
-FcL->wData[38][53]=55;
-FcL->wData[38][54]=71;
-FcL->wData[38][55]=-158;
-FcL->wData[38][56]=59;
-FcL->wData[38][57]=-20;
-FcL->wData[38][58]=-115;
-FcL->wData[38][59]=86;
-FcL->wData[38][60]=-155;
-FcL->wData[38][61]=-49;
-FcL->wData[38][62]=44;
-FcL->wData[38][63]=-26;
-FcL->wData[38][64]=56;
-FcL->wData[38][65]=78;
-FcL->wData[38][66]=10;
-FcL->wData[38][67]=-218;
-FcL->wData[38][68]=-238;
-FcL->wData[38][69]=-31;
-FcL->wData[38][70]=-179;
-FcL->wData[38][71]=-71;
-FcL->wData[38][72]=139;
-FcL->wData[38][73]=-163;
-FcL->wData[38][74]=84;
-FcL->wData[38][75]=-7;
-FcL->wData[38][76]=-143;
-FcL->wData[38][77]=78;
-FcL->wData[38][78]=6;
-FcL->wData[38][79]=44;
-FcL->wData[38][80]=53;
-FcL->wData[39][0]=-89;
-FcL->wData[39][1]=6;
-FcL->wData[39][2]=116;
-FcL->wData[39][3]=204;
-FcL->wData[39][4]=-97;
-FcL->wData[39][5]=-135;
-FcL->wData[39][6]=9;
-FcL->wData[39][7]=-143;
-FcL->wData[39][8]=30;
-FcL->wData[39][9]=-197;
-FcL->wData[39][10]=78;
-FcL->wData[39][11]=-44;
-FcL->wData[39][12]=-610;
-FcL->wData[39][13]=285;
-FcL->wData[39][14]=359;
-FcL->wData[39][15]=89;
-FcL->wData[39][16]=92;
-FcL->wData[39][17]=85;
-FcL->wData[39][18]=-102;
-FcL->wData[39][19]=154;
-FcL->wData[39][20]=-202;
-FcL->wData[39][21]=-531;
-FcL->wData[39][22]=-137;
-FcL->wData[39][23]=-176;
-FcL->wData[39][24]=145;
-FcL->wData[39][25]=-121;
-FcL->wData[39][26]=-102;
-FcL->wData[39][27]=25;
-FcL->wData[39][28]=21;
-FcL->wData[39][29]=-61;
-FcL->wData[39][30]=-201;
-FcL->wData[39][31]=-6;
-FcL->wData[39][32]=165;
-FcL->wData[39][33]=-76;
-FcL->wData[39][34]=-156;
-FcL->wData[39][35]=-126;
-FcL->wData[39][36]=82;
-FcL->wData[39][37]=-97;
-FcL->wData[39][38]=-23;
-FcL->wData[39][39]=145;
-FcL->wData[39][40]=55;
-FcL->wData[39][41]=136;
-FcL->wData[39][42]=-141;
-FcL->wData[39][43]=41;
-FcL->wData[39][44]=-54;
-FcL->wData[39][45]=-80;
-FcL->wData[39][46]=50;
-FcL->wData[39][47]=-33;
-FcL->wData[39][48]=-292;
-FcL->wData[39][49]=37;
-FcL->wData[39][50]=-71;
-FcL->wData[39][51]=161;
-FcL->wData[39][52]=-121;
-FcL->wData[39][53]=-123;
-FcL->wData[39][54]=-66;
-FcL->wData[39][55]=58;
-FcL->wData[39][56]=-118;
-FcL->wData[39][57]=-216;
-FcL->wData[39][58]=64;
-FcL->wData[39][59]=40;
-FcL->wData[39][60]=62;
-FcL->wData[39][61]=-66;
-FcL->wData[39][62]=94;
-FcL->wData[39][63]=70;
-FcL->wData[39][64]=24;
-FcL->wData[39][65]=47;
-FcL->wData[39][66]=94;
-FcL->wData[39][67]=143;
-FcL->wData[39][68]=94;
-FcL->wData[39][69]=-115;
-FcL->wData[39][70]=-197;
-FcL->wData[39][71]=125;
-FcL->wData[39][72]=59;
-FcL->wData[39][73]=114;
-FcL->wData[39][74]=-59;
-FcL->wData[39][75]=85;
-FcL->wData[39][76]=-23;
-FcL->wData[39][77]=222;
-FcL->wData[39][78]=3;
-FcL->wData[39][79]=110;
-FcL->wData[39][80]=142;
-FcL->wData[40][0]=-30;
-FcL->wData[40][1]=19;
-FcL->wData[40][2]=49;
-FcL->wData[40][3]=-143;
-FcL->wData[40][4]=-42;
-FcL->wData[40][5]=-66;
-FcL->wData[40][6]=125;
-FcL->wData[40][7]=50;
-FcL->wData[40][8]=-125;
-FcL->wData[40][9]=-76;
-FcL->wData[40][10]=-222;
-FcL->wData[40][11]=78;
-FcL->wData[40][12]=-153;
-FcL->wData[40][13]=-25;
-FcL->wData[40][14]=-148;
-FcL->wData[40][15]=-153;
-FcL->wData[40][16]=150;
-FcL->wData[40][17]=-50;
-FcL->wData[40][18]=-35;
-FcL->wData[40][19]=168;
-FcL->wData[40][20]=-137;
-FcL->wData[40][21]=90;
-FcL->wData[40][22]=-59;
-FcL->wData[40][23]=153;
-FcL->wData[40][24]=-164;
-FcL->wData[40][25]=-115;
-FcL->wData[40][26]=-55;
-FcL->wData[40][27]=-109;
-FcL->wData[40][28]=159;
-FcL->wData[40][29]=-214;
-FcL->wData[40][30]=82;
-FcL->wData[40][31]=-41;
-FcL->wData[40][32]=-216;
-FcL->wData[40][33]=81;
-FcL->wData[40][34]=43;
-FcL->wData[40][35]=-196;
-FcL->wData[40][36]=28;
-FcL->wData[40][37]=25;
-FcL->wData[40][38]=-87;
-FcL->wData[40][39]=-36;
-FcL->wData[40][40]=-203;
-FcL->wData[40][41]=-208;
-FcL->wData[40][42]=-54;
-FcL->wData[40][43]=34;
-FcL->wData[40][44]=227;
-FcL->wData[40][45]=-181;
-FcL->wData[40][46]=-174;
-FcL->wData[40][47]=-86;
-FcL->wData[40][48]=-171;
-FcL->wData[40][49]=42;
-FcL->wData[40][50]=-50;
-FcL->wData[40][51]=147;
-FcL->wData[40][52]=-47;
-FcL->wData[40][53]=-71;
-FcL->wData[40][54]=-35;
-FcL->wData[40][55]=-112;
-FcL->wData[40][56]=-211;
-FcL->wData[40][57]=-226;
-FcL->wData[40][58]=133;
-FcL->wData[40][59]=47;
-FcL->wData[40][60]=-91;
-FcL->wData[40][61]=142;
-FcL->wData[40][62]=66;
-FcL->wData[40][63]=17;
-FcL->wData[40][64]=-123;
-FcL->wData[40][65]=-153;
-FcL->wData[40][66]=8;
-FcL->wData[40][67]=-177;
-FcL->wData[40][68]=-180;
-FcL->wData[40][69]=120;
-FcL->wData[40][70]=-104;
-FcL->wData[40][71]=-1;
-FcL->wData[40][72]=-175;
-FcL->wData[40][73]=-181;
-FcL->wData[40][74]=-104;
-FcL->wData[40][75]=-5;
-FcL->wData[40][76]=-173;
-FcL->wData[40][77]=108;
-FcL->wData[40][78]=-84;
-FcL->wData[40][79]=-73;
-FcL->wData[40][80]=2;
-FcL->wData[41][0]=-156;
-FcL->wData[41][1]=-179;
-FcL->wData[41][2]=-194;
-FcL->wData[41][3]=-42;
-FcL->wData[41][4]=244;
-FcL->wData[41][5]=71;
-FcL->wData[41][6]=228;
-FcL->wData[41][7]=-177;
-FcL->wData[41][8]=121;
-FcL->wData[41][9]=115;
-FcL->wData[41][10]=-83;
-FcL->wData[41][11]=235;
-FcL->wData[41][12]=262;
-FcL->wData[41][13]=231;
-FcL->wData[41][14]=178;
-FcL->wData[41][15]=-35;
-FcL->wData[41][16]=-165;
-FcL->wData[41][17]=102;
-FcL->wData[41][18]=9;
-FcL->wData[41][19]=109;
-FcL->wData[41][20]=167;
-FcL->wData[41][21]=193;
-FcL->wData[41][22]=68;
-FcL->wData[41][23]=-44;
-FcL->wData[41][24]=-100;
-FcL->wData[41][25]=-76;
-FcL->wData[41][26]=-57;
-FcL->wData[41][27]=163;
-FcL->wData[41][28]=111;
-FcL->wData[41][29]=44;
-FcL->wData[41][30]=-82;
-FcL->wData[41][31]=236;
-FcL->wData[41][32]=-174;
-FcL->wData[41][33]=285;
-FcL->wData[41][34]=-80;
-FcL->wData[41][35]=142;
-FcL->wData[41][36]=-188;
-FcL->wData[41][37]=-360;
-FcL->wData[41][38]=188;
-FcL->wData[41][39]=175;
-FcL->wData[41][40]=287;
-FcL->wData[41][41]=-218;
-FcL->wData[41][42]=214;
-FcL->wData[41][43]=-57;
-FcL->wData[41][44]=-106;
-FcL->wData[41][45]=39;
-FcL->wData[41][46]=133;
-FcL->wData[41][47]=-134;
-FcL->wData[41][48]=427;
-FcL->wData[41][49]=356;
-FcL->wData[41][50]=-24;
-FcL->wData[41][51]=-95;
-FcL->wData[41][52]=206;
-FcL->wData[41][53]=137;
-FcL->wData[41][54]=142;
-FcL->wData[41][55]=-102;
-FcL->wData[41][56]=-147;
-FcL->wData[41][57]=140;
-FcL->wData[41][58]=-53;
-FcL->wData[41][59]=-39;
-FcL->wData[41][60]=152;
-FcL->wData[41][61]=-258;
-FcL->wData[41][62]=132;
-FcL->wData[41][63]=-7;
-FcL->wData[41][64]=180;
-FcL->wData[41][65]=-37;
-FcL->wData[41][66]=244;
-FcL->wData[41][67]=-439;
-FcL->wData[41][68]=45;
-FcL->wData[41][69]=196;
-FcL->wData[41][70]=-401;
-FcL->wData[41][71]=127;
-FcL->wData[41][72]=138;
-FcL->wData[41][73]=-69;
-FcL->wData[41][74]=31;
-FcL->wData[41][75]=210;
-FcL->wData[41][76]=-220;
-FcL->wData[41][77]=22;
-FcL->wData[41][78]=-168;
-FcL->wData[41][79]=-184;
-FcL->wData[41][80]=-102;
-FcL->wData[42][0]=-103;
-FcL->wData[42][1]=95;
-FcL->wData[42][2]=78;
-FcL->wData[42][3]=14;
-FcL->wData[42][4]=-90;
-FcL->wData[42][5]=-56;
-FcL->wData[42][6]=437;
-FcL->wData[42][7]=64;
-FcL->wData[42][8]=177;
-FcL->wData[42][9]=116;
-FcL->wData[42][10]=-57;
-FcL->wData[42][11]=99;
-FcL->wData[42][12]=-254;
-FcL->wData[42][13]=77;
-FcL->wData[42][14]=-111;
-FcL->wData[42][15]=273;
-FcL->wData[42][16]=305;
-FcL->wData[42][17]=-222;
-FcL->wData[42][18]=189;
-FcL->wData[42][19]=11;
-FcL->wData[42][20]=-202;
-FcL->wData[42][21]=-126;
-FcL->wData[42][22]=139;
-FcL->wData[42][23]=69;
-FcL->wData[42][24]=87;
-FcL->wData[42][25]=124;
-FcL->wData[42][26]=-38;
-FcL->wData[42][27]=145;
-FcL->wData[42][28]=131;
-FcL->wData[42][29]=67;
-FcL->wData[42][30]=279;
-FcL->wData[42][31]=-139;
-FcL->wData[42][32]=78;
-FcL->wData[42][33]=-100;
-FcL->wData[42][34]=29;
-FcL->wData[42][35]=58;
-FcL->wData[42][36]=82;
-FcL->wData[42][37]=124;
-FcL->wData[42][38]=23;
-FcL->wData[42][39]=30;
-FcL->wData[42][40]=43;
-FcL->wData[42][41]=-89;
-FcL->wData[42][42]=-578;
-FcL->wData[42][43]=121;
-FcL->wData[42][44]=-214;
-FcL->wData[42][45]=30;
-FcL->wData[42][46]=47;
-FcL->wData[42][47]=76;
-FcL->wData[42][48]=8;
-FcL->wData[42][49]=-348;
-FcL->wData[42][50]=-8;
-FcL->wData[42][51]=-74;
-FcL->wData[42][52]=44;
-FcL->wData[42][53]=-43;
-FcL->wData[42][54]=146;
-FcL->wData[42][55]=255;
-FcL->wData[42][56]=-290;
-FcL->wData[42][57]=-109;
-FcL->wData[42][58]=-212;
-FcL->wData[42][59]=-198;
-FcL->wData[42][60]=-233;
-FcL->wData[42][61]=-84;
-FcL->wData[42][62]=-323;
-FcL->wData[42][63]=14;
-FcL->wData[42][64]=-85;
-FcL->wData[42][65]=16;
-FcL->wData[42][66]=-144;
-FcL->wData[42][67]=392;
-FcL->wData[42][68]=-81;
-FcL->wData[42][69]=-82;
-FcL->wData[42][70]=227;
-FcL->wData[42][71]=-458;
-FcL->wData[42][72]=-258;
-FcL->wData[42][73]=-204;
-FcL->wData[42][74]=45;
-FcL->wData[42][75]=-75;
-FcL->wData[42][76]=9;
-FcL->wData[42][77]=-27;
-FcL->wData[42][78]=-175;
-FcL->wData[42][79]=34;
-FcL->wData[42][80]=52;
-FcL->wData[43][0]=-60;
-FcL->wData[43][1]=146;
-FcL->wData[43][2]=-48;
-FcL->wData[43][3]=69;
-FcL->wData[43][4]=-170;
-FcL->wData[43][5]=-15;
-FcL->wData[43][6]=233;
-FcL->wData[43][7]=-120;
-FcL->wData[43][8]=108;
-FcL->wData[43][9]=67;
-FcL->wData[43][10]=31;
-FcL->wData[43][11]=-99;
-FcL->wData[43][12]=143;
-FcL->wData[43][13]=-88;
-FcL->wData[43][14]=-64;
-FcL->wData[43][15]=-57;
-FcL->wData[43][16]=122;
-FcL->wData[43][17]=-25;
-FcL->wData[43][18]=-21;
-FcL->wData[43][19]=16;
-FcL->wData[43][20]=58;
-FcL->wData[43][21]=301;
-FcL->wData[43][22]=-105;
-FcL->wData[43][23]=-254;
-FcL->wData[43][24]=-131;
-FcL->wData[43][25]=-182;
-FcL->wData[43][26]=189;
-FcL->wData[43][27]=11;
-FcL->wData[43][28]=-297;
-FcL->wData[43][29]=158;
-FcL->wData[43][30]=136;
-FcL->wData[43][31]=-27;
-FcL->wData[43][32]=-221;
-FcL->wData[43][33]=495;
-FcL->wData[43][34]=225;
-FcL->wData[43][35]=-69;
-FcL->wData[43][36]=154;
-FcL->wData[43][37]=-43;
-FcL->wData[43][38]=-228;
-FcL->wData[43][39]=363;
-FcL->wData[43][40]=315;
-FcL->wData[43][41]=-62;
-FcL->wData[43][42]=155;
-FcL->wData[43][43]=-75;
-FcL->wData[43][44]=-15;
-FcL->wData[43][45]=-282;
-FcL->wData[43][46]=73;
-FcL->wData[43][47]=-12;
-FcL->wData[43][48]=-159;
-FcL->wData[43][49]=169;
-FcL->wData[43][50]=134;
-FcL->wData[43][51]=252;
-FcL->wData[43][52]=4;
-FcL->wData[43][53]=-89;
-FcL->wData[43][54]=104;
-FcL->wData[43][55]=356;
-FcL->wData[43][56]=-262;
-FcL->wData[43][57]=-29;
-FcL->wData[43][58]=-191;
-FcL->wData[43][59]=174;
-FcL->wData[43][60]=306;
-FcL->wData[43][61]=-406;
-FcL->wData[43][62]=19;
-FcL->wData[43][63]=509;
-FcL->wData[43][64]=200;
-FcL->wData[43][65]=-40;
-FcL->wData[43][66]=46;
-FcL->wData[43][67]=-74;
-FcL->wData[43][68]=40;
-FcL->wData[43][69]=226;
-FcL->wData[43][70]=224;
-FcL->wData[43][71]=-99;
-FcL->wData[43][72]=84;
-FcL->wData[43][73]=-224;
-FcL->wData[43][74]=49;
-FcL->wData[43][75]=-114;
-FcL->wData[43][76]=-35;
-FcL->wData[43][77]=-111;
-FcL->wData[43][78]=-201;
-FcL->wData[43][79]=80;
-FcL->wData[43][80]=-127;
-FcL->wData[44][0]=-142;
-FcL->wData[44][1]=78;
-FcL->wData[44][2]=-114;
-FcL->wData[44][3]=48;
-FcL->wData[44][4]=126;
-FcL->wData[44][5]=7;
-FcL->wData[44][6]=-191;
-FcL->wData[44][7]=-70;
-FcL->wData[44][8]=-34;
-FcL->wData[44][9]=-200;
-FcL->wData[44][10]=-108;
-FcL->wData[44][11]=41;
-FcL->wData[44][12]=-52;
-FcL->wData[44][13]=-40;
-FcL->wData[44][14]=76;
-FcL->wData[44][15]=-173;
-FcL->wData[44][16]=-216;
-FcL->wData[44][17]=90;
-FcL->wData[44][18]=-224;
-FcL->wData[44][19]=-180;
-FcL->wData[44][20]=-140;
-FcL->wData[44][21]=-60;
-FcL->wData[44][22]=-116;
-FcL->wData[44][23]=-117;
-FcL->wData[44][24]=60;
-FcL->wData[44][25]=-80;
-FcL->wData[44][26]=-34;
-FcL->wData[44][27]=-168;
-FcL->wData[44][28]=-149;
-FcL->wData[44][29]=-137;
-FcL->wData[44][30]=65;
-FcL->wData[44][31]=-86;
-FcL->wData[44][32]=12;
-FcL->wData[44][33]=-73;
-FcL->wData[44][34]=38;
-FcL->wData[44][35]=-118;
-FcL->wData[44][36]=-7;
-FcL->wData[44][37]=-125;
-FcL->wData[44][38]=96;
-FcL->wData[44][39]=137;
-FcL->wData[44][40]=196;
-FcL->wData[44][41]=72;
-FcL->wData[44][42]=-170;
-FcL->wData[44][43]=-151;
-FcL->wData[44][44]=-129;
-FcL->wData[44][45]=126;
-FcL->wData[44][46]=-65;
-FcL->wData[44][47]=169;
-FcL->wData[44][48]=51;
-FcL->wData[44][49]=-84;
-FcL->wData[44][50]=-95;
-FcL->wData[44][51]=-62;
-FcL->wData[44][52]=122;
-FcL->wData[44][53]=-219;
-FcL->wData[44][54]=58;
-FcL->wData[44][55]=183;
-FcL->wData[44][56]=48;
-FcL->wData[44][57]=-216;
-FcL->wData[44][58]=25;
-FcL->wData[44][59]=-78;
-FcL->wData[44][60]=-62;
-FcL->wData[44][61]=108;
-FcL->wData[44][62]=180;
-FcL->wData[44][63]=-161;
-FcL->wData[44][64]=-200;
-FcL->wData[44][65]=202;
-FcL->wData[44][66]=23;
-FcL->wData[44][67]=137;
-FcL->wData[44][68]=-94;
-FcL->wData[44][69]=43;
-FcL->wData[44][70]=94;
-FcL->wData[44][71]=-188;
-FcL->wData[44][72]=-34;
-FcL->wData[44][73]=-30;
-FcL->wData[44][74]=153;
-FcL->wData[44][75]=-95;
-FcL->wData[44][76]=201;
-FcL->wData[44][77]=-14;
-FcL->wData[44][78]=-189;
-FcL->wData[44][79]=-144;
-FcL->wData[44][80]=44;
-FcL->basicData[0]=-97;
-FcL->basicData[1]=175;
-FcL->basicData[2]=8;
-FcL->basicData[3]=-67;
-FcL->basicData[4]=23;
-FcL->basicData[5]=-86;
-FcL->basicData[6]=5;
-FcL->basicData[7]=18;
-FcL->basicData[8]=-15;
-FcL->basicData[9]=29;
-FcL->basicData[10]=220;
-FcL->basicData[11]=-17;
-FcL->basicData[12]=-414;
-FcL->basicData[13]=-105;
-FcL->basicData[14]=44;
-FcL->basicData[15]=36;
-FcL->basicData[16]=107;
-FcL->basicData[17]=38;
-FcL->basicData[18]=-22;
-FcL->basicData[19]=-25;
-FcL->basicData[20]=232;
-FcL->basicData[21]=-42;
-FcL->basicData[22]=-30;
-FcL->basicData[23]=-79;
-FcL->basicData[24]=-118;
-FcL->basicData[25]=111;
-FcL->basicData[26]=105;
-FcL->basicData[27]=21;
-FcL->basicData[28]=-65;
-FcL->basicData[29]=-21;
-FcL->basicData[30]=122;
-FcL->basicData[31]=-55;
-FcL->basicData[32]=-50;
-FcL->basicData[33]=51;
-FcL->basicData[34]=99;
-FcL->basicData[35]=89;
-FcL->basicData[36]=120;
-FcL->basicData[37]=-19;
-FcL->basicData[38]=101;
-FcL->basicData[39]=56;
-FcL->basicData[40]=-11;
-FcL->basicData[41]=-55;
-FcL->basicData[42]=54;
-FcL->basicData[43]=58;
-FcL->basicData[44]=-14;
 
+	for(i = 0;i<outputNum; i++){
+		for(int j=0;j<inputNum; j++){
+			FcL->wData[i][j] = FcL_wdata[i][j];
+		}
+	}
+	int FcL_basicdata[120] = {62,-3,125,131,14,70,-7,-20,-33,38,26,30,\
+							72,10,-41,-29,-48,-46,-21,32,16,38,52,24,\
+							131,-145,26,-19,-27,50,32,-62,11,-56,109,57,\
+							-10,43,197,44,-4,-4,46,-34,-4,40,-34,46,\
+							11,31,34,72,63,-8,-49,63,95,-33,-28,50,\
+							70,-19,-106,-6,12,134,38,-6,39,56,8,19,\
+							67,52,-39,24,27,115,-51,2,52,33,-10,3,\
+							12,-34,-2,-10,15,-29,-73,114,-36,58,-13,22,\
+							37,7,54,111,75,-18,42,-29,-6,-22,12,-1,\
+							56,-77,7,-77,-10,80,59,9,-60,29,67,18};
+
+
+	// int FcL_basicdata[1] = {20};
+
+
+	for(i = 0;i<outputNum; i++){
+		FcL->basicData[i] = FcL_basicdata[i];
+	}
 
 	for (i = 0; i < outputNum; ++i)
 	{
@@ -5150,8 +1023,149 @@ FcL->basicData[44]=-14;
 		{
 			FcL->y[i] = inputData[k] * FcL->wData[i][k] + FcL->y[i];
 		}
+		
+		FcL->y[i] = FcL->y[i]>>10;
 		FcL->y[i] = activation_relu(FcL->y[i], FcL->basicData[i]);
-		FcL->y[i] = FcL->y[i]/1000;
+		//printf("%f\n ", FcL->y[i]);
+	}
+	//printf("\n\n");
+
+
+	for (i = (outputNum - 1); i != (-1); i--)
+	{
+		free(FcL->wData[i]);
+	}
+	free(FcL->wData);
+	free(FcL->basicData);
+
+	return FcL->y;
+}
+
+int* fc2(int* inputData, char* filename, int inputNum, int outputNum)
+{
+	int i, j, k;
+	FcLayer* FcL = (FcLayer*)malloc(sizeof(FcLayer));
+	FcL->wData = (int**)malloc(outputNum * sizeof(int*));
+	for (i = (outputNum - 1); i != (-1); i--)
+	{
+		FcL->wData[i] = (int*)calloc(inputNum, sizeof(int));
+	}
+	FcL->basicData = (int*)calloc(outputNum, sizeof(int));
+	FcL->y = (int*)calloc(outputNum, sizeof(int));
+
+	int FcL_wdata[84][120] = {{56,17,-188,194,-40,129,-28,78,-282,-89,86,-40,127,50,132,101,-51,-163,-108,90,-109,61,109,129,105,128,-40,-101,131,116,51,39,-127,-59,66,43,-37,149,288,22,-208,-98,45,14,-166,54,-82,-72,170,37,164,42,143,-135,78,151,142,53,44,-29,-37,-137,-232,-96,-188,74,-151,-157,-20,121,-111,-176,-142,131,-70,-8,-95,194,-67,-99,-137,83,58,-149,-33,176,-98,125,-35,-159,-169,-30,52,13,115,154,190,12,194,-174,-194,-106,-56,-17,72,-36,-92,-160,42,-81,-137,-122,-14,-108,-43,10,-125,156,-25,152},\
+{134,121,57,-66,-94,-105,145,-50,165,-212,176,9,-182,-39,-241,23,25,85,103,104,219,-55,-142,-123,-98,-12,83,171,-8,-94,-64,69,7,117,-13,5,154,68,-101,-65,-87,-34,-123,125,28,28,87,-99,90,-66,48,198,-78,221,-64,-30,57,-245,44,-66,-84,-91,-128,51,-51,145,-34,149,-180,-72,81,205,119,127,-73,-135,131,58,-132,115,123,-16,-176,96,-11,-20,59,-43,-11,36,-214,-173,151,169,-66,-5,159,-0,-50,79,-209,-85,97,185,-42,-49,120,153,9,298,38,-101,-63,127,-81,12,-237,-125,125,86},\
+{148,-169,-3,-2,171,101,-116,-82,-97,-198,-173,-92,-127,160,-167,103,36,161,-28,-17,3,143,116,-121,-77,108,-147,119,28,53,73,-67,-80,-20,-163,9,94,3,36,209,24,-62,62,-2,-69,-118,169,106,-15,6,24,-153,208,-148,106,-40,30,-18,175,-175,-143,-70,-70,-74,-144,135,144,150,-67,72,64,86,27,133,-128,150,-11,223,-15,-102,-42,91,-114,86,2,-7,-9,68,122,-49,29,-165,192,43,193,26,170,-86,127,48,-110,82,-155,-46,-166,92,73,-96,60,201,-149,-117,80,85,-12,117,-162,199,103,78},\
+{107,-11,-33,231,1,-98,-112,285,65,77,-37,35,-34,-110,-23,-190,-87,-193,-187,-24,23,-18,145,-117,111,-93,-321,-163,-100,169,-59,6,-159,-16,45,18,-58,-73,249,-135,-118,-3,179,38,-43,-123,-36,72,-59,-91,-22,-99,-40,61,-66,256,42,74,-20,54,-51,49,-86,126,-126,-96,75,126,99,125,-95,-153,-156,-135,-0,122,6,242,-35,159,181,9,36,69,58,-98,16,-5,-8,-41,-178,-37,-203,-74,-48,-197,90,-124,-96,-16,-64,-225,194,22,45,137,-8,-88,128,-9,139,165,-147,-126,201,-110,-36,-51,110,54},\
+{-57,-119,-84,175,121,133,-84,18,-134,21,-16,175,154,196,-180,59,12,-172,-97,-73,7,41,-182,-148,-194,71,-177,147,-29,37,-43,99,-173,-122,104,-69,99,59,216,191,86,-34,-123,-185,133,-20,-21,-32,85,-165,-113,73,99,41,140,31,68,43,-82,41,-81,-142,116,67,-29,142,23,-103,49,133,126,134,-82,80,135,-57,48,186,49,1,-156,87,122,-55,188,32,-136,111,-112,-129,142,7,70,45,-164,-188,-5,-64,80,126,-38,-191,47,6,-155,-63,10,89,-93,26,77,-55,-132,-3,186,-200,-2,148,-157,105},\
+{66,86,-208,-50,93,123,-24,-128,-78,64,-43,-167,-53,-62,54,-87,-212,188,-89,-7,120,-235,-67,-16,216,-133,189,112,-50,135,154,86,-82,-204,-122,257,97,-19,51,44,97,43,-32,-72,112,-137,10,116,-49,-38,-125,-201,154,-192,-56,3,-159,-198,116,135,123,-104,-136,91,51,122,152,118,-19,-61,-36,-16,28,136,-151,46,-85,180,57,177,-155,-130,-66,113,-14,-106,5,151,141,-86,-62,-21,99,-44,-19,212,-131,121,41,92,-61,53,20,-157,142,89,-93,-108,29,-48,11,81,203,-71,59,55,117,81,-1,-114},\
+{68,165,118,150,-5,43,130,-96,175,-98,-87,-43,144,21,-150,-105,214,-55,155,-100,132,152,121,96,-79,79,135,40,-148,-131,-104,-61,142,19,14,-95,-39,107,67,-93,-32,-133,-154,167,86,-34,-23,169,148,-118,63,-79,44,117,1,-149,-28,136,12,-191,-13,99,-118,-140,167,80,124,-111,-107,51,11,-59,28,115,-118,56,-53,-104,-13,-10,8,-142,125,-53,142,98,2,59,172,-149,66,-166,-88,-216,169,69,-38,-176,87,112,104,2,31,-44,-34,-53,109,-142,87,-191,212,-49,-53,86,13,86,-221,140,75,-155},\
+{-157,-117,26,-20,109,136,161,-169,-91,8,-137,17,61,-65,-135,169,24,-129,3,-128,-90,-135,12,-35,113,22,127,-31,-21,-133,-138,7,52,-0,18,122,-60,0,143,-45,-187,-100,-8,95,-118,33,9,156,170,-51,-55,56,49,213,155,30,71,51,170,-46,140,-146,21,-74,-96,-130,-182,-87,30,37,-124,53,33,180,117,-34,-167,-169,-150,-91,-52,-27,183,-226,73,-108,-145,-114,-37,-12,-80,55,-73,-149,33,-230,44,2,-57,-37,47,102,-70,-202,86,-27,125,182,50,-81,107,88,162,95,-150,1,-14,65,-138,-20},\
+{-124,-208,-3,77,-97,128,107,100,199,-214,-41,97,248,105,-15,-34,-35,-89,150,-48,165,-31,115,-235,248,55,-11,-133,-19,27,-7,99,145,125,182,28,-168,134,270,24,-79,-70,-18,109,-146,212,-116,-2,-70,53,-89,3,-8,-80,165,3,-127,103,9,-240,-48,54,-87,-40,-133,36,-11,-177,-170,-11,109,185,102,86,-130,78,-36,161,120,-151,74,-15,-25,118,19,-80,-130,-72,12,-80,-78,106,211,76,63,-221,83,-6,117,151,-57,-191,-10,-127,104,73,-77,-39,-108,211,71,-34,-41,-134,-112,106,-93,19,-193,-131},\
+{60,-184,-93,127,42,-116,-8,83,82,-242,227,187,191,-160,5,-132,301,-178,-89,-35,-126,-91,-32,83,59,-175,118,134,-170,117,-133,-172,182,97,-67,-23,8,81,-5,122,250,116,-105,230,-115,-72,74,-13,-13,-19,123,-192,27,-95,-16,93,32,-7,143,151,35,166,-17,39,-73,-242,188,-54,-215,57,-161,60,54,5,-202,51,85,-152,14,212,211,111,-48,-160,115,110,171,-80,-160,-139,-25,24,98,147,-143,149,-170,-54,5,-204,-257,15,-121,80,142,-191,125,-97,86,-23,53,31,-96,71,35,-13,-183,-3,79,-13},\
+{158,17,29,-21,-96,71,56,85,-258,-329,145,84,128,61,-151,-137,-96,23,102,98,97,190,33,68,-205,-112,143,-69,182,117,-31,222,-114,92,271,125,30,-120,-238,-63,-98,-222,204,-17,155,14,-10,161,-285,162,-140,129,-75,145,-6,-124,-55,67,148,-38,168,38,39,-176,112,196,143,3,175,-60,-12,-121,140,-81,29,113,-21,-16,-178,-21,-230,84,46,-89,-125,67,163,-128,-141,120,90,-108,-218,178,-135,-236,62,-98,18,73,-119,2,227,-122,145,-216,-63,160,-28,139,52,-6,90,-167,205,-77,36,230,-164,22},\
+{-166,94,32,144,-15,-100,-160,-122,-10,148,62,115,31,123,98,5,131,26,-86,-45,-113,7,176,125,102,-164,-64,-199,136,-47,32,41,68,6,-131,-182,-117,140,-119,-1,-65,119,-178,29,30,-98,-85,143,-33,-85,-108,33,154,-126,-36,14,-63,-87,111,-176,-95,101,-154,129,-173,229,34,162,77,119,-139,35,227,-73,34,94,-120,99,-92,44,-284,147,-156,175,22,-1,-62,86,66,115,139,116,-59,11,-168,-194,56,86,23,-20,-131,231,23,-145,76,-4,124,91,-87,-210,99,-161,9,-69,78,12,-128,28,-106,144},\
+{-166,-27,178,-84,53,102,126,-139,6,25,-98,90,-93,-108,-94,-130,68,-98,-146,-237,-13,90,28,93,168,178,-95,-63,170,-4,43,151,-195,34,57,-62,168,170,86,-168,-123,-8,-75,-105,105,15,77,181,-179,-123,-40,170,28,-25,-138,50,138,-81,-1,60,-74,25,-87,-31,101,-52,14,17,-30,-29,-66,-188,166,-158,148,243,117,164,171,-182,-141,108,140,-32,96,-156,-48,121,-184,106,-1,161,112,-56,-190,13,169,-56,-142,141,-258,-73,206,-146,106,-103,-160,-7,12,-107,127,117,245,-265,115,-15,46,99,183,29},\
+{113,-89,-180,-69,95,-73,106,68,143,-6,-188,125,14,-32,112,-60,36,-18,130,-22,-7,-5,-117,40,-120,57,27,12,-100,192,195,-53,39,-19,-206,-46,17,107,-147,85,-79,-96,27,12,-44,-90,155,-140,9,204,107,-17,-81,-175,59,93,152,-51,-105,-83,-60,-140,153,141,175,177,-133,-1,-114,-84,94,-208,135,-1,-5,-1,113,175,-60,6,-118,84,78,-105,-102,-17,-5,-163,-183,-12,-121,103,76,169,-109,-151,182,-41,-43,-130,-231,48,144,-67,-3,-151,-182,80,6,-144,-53,63,81,-210,-76,45,14,7,-57,122},\
+{56,-163,147,14,149,51,151,-179,150,-20,-168,231,-26,81,-189,39,-112,-82,31,-164,110,-213,107,47,208,73,37,-143,53,65,-166,-113,213,195,164,-130,159,-69,-161,-251,83,205,-156,43,1,17,-15,-101,130,-77,-144,121,217,55,-111,-92,-187,-76,108,-230,-126,59,114,199,121,140,-73,-186,-107,157,160,121,39,-81,-11,-81,-146,66,159,-61,-31,-57,-3,-192,6,100,-65,38,32,104,-288,239,79,-27,123,194,89,13,7,-35,-17,110,-8,13,-30,-60,87,-33,163,62,-56,-41,-22,-186,26,136,-146,52,58,-38},\
+{-7,25,-201,-188,-128,-2,-100,-215,-72,-45,-25,-64,16,-163,-79,-115,189,127,-18,-224,-19,-43,-120,122,55,-126,163,109,80,7,143,71,101,50,49,178,-139,-67,32,-22,172,69,-195,155,-31,80,-154,-11,68,209,-107,181,-117,-112,86,-256,62,-16,-4,-4,-57,171,169,163,-133,-5,5,-141,284,-91,-92,117,182,164,75,73,-143,-48,-41,-34,-105,-77,-99,-9,91,162,186,161,-51,-89,-137,-65,-247,95,90,242,111,50,-39,-147,118,64,-8,-65,111,-14,96,131,152,42,-78,63,-13,190,84,-32,203,-182,2,-142},\
+{-143,-90,90,108,-106,-85,161,-114,-53,-211,137,121,-87,166,-145,79,72,173,-45,-139,-56,-151,-41,211,-78,-98,140,-48,-105,-61,-14,200,-109,-107,-136,-132,-47,38,-83,123,71,-43,-15,-4,-94,-59,4,-33,82,143,79,-149,-8,-60,65,115,87,161,133,21,-205,-126,30,-73,-14,180,-152,-117,45,106,111,-140,-119,-112,73,-136,16,-64,-163,-129,-81,-3,-162,-103,-84,150,-79,-78,95,-160,54,-34,-87,-165,-51,120,-2,-115,146,42,-89,-53,126,79,-149,-78,22,56,-93,-18,-120,48,98,-212,-91,-55,-63,-67,67,186},\
+{109,-64,132,114,-161,-65,-178,-52,1,-122,151,-89,88,125,198,37,-61,35,-15,-39,18,22,22,-46,105,97,161,-40,31,-64,-162,-53,149,33,151,-48,-74,125,-179,20,-55,137,-64,-198,101,62,3,112,-99,161,-5,-72,94,-143,120,113,-64,108,120,-24,-20,-62,-75,7,52,103,-190,113,-90,-68,120,72,154,152,-160,-87,112,-43,-84,-156,-158,32,189,-137,155,121,15,-0,-12,140,114,-62,-81,12,-70,56,-154,106,-7,-72,41,-44,135,-69,105,-109,28,-55,-74,-231,36,-179,-44,-59,-127,14,17,140,-155,-143},\
+{211,-168,-166,-95,-164,-79,-55,-60,60,-11,59,124,-107,-44,-55,-214,-56,48,-46,-249,40,144,223,-199,-182,-7,-26,-90,135,214,100,-87,79,27,-207,29,-118,71,10,24,-205,112,195,-213,-92,-181,13,-56,-185,-83,120,-43,77,-210,70,42,157,-163,-129,85,149,9,-90,61,-33,86,151,102,-39,10,3,107,92,33,2,243,195,317,48,15,-48,178,-37,56,156,-154,66,-123,-90,25,-3,-209,-8,136,-201,71,-84,136,104,-36,-133,-34,124,-84,-84,108,-178,40,138,28,-43,-91,-185,82,251,-60,90,158,-92,182},\
+{-147,101,251,52,145,45,45,208,-32,-110,-88,-126,-201,-138,-45,-174,79,-156,120,31,-68,-93,-60,-47,-95,87,164,42,-143,148,110,77,-23,58,128,237,126,134,122,174,-153,21,115,143,-92,25,-36,-147,205,-164,5,-93,36,-94,44,17,58,-60,93,116,168,-13,107,96,154,101,-108,18,184,203,168,18,-73,92,36,134,-70,141,63,12,160,4,-131,70,-156,-251,-126,131,79,124,-183,195,-64,-128,-66,-318,43,37,124,205,-1,-86,162,-73,26,-119,35,124,-126,-153,-242,-135,-36,122,37,174,12,-38,-144,-199},\
+{-152,96,90,185,-173,-114,-109,248,294,85,187,-161,11,42,-51,-250,140,-191,-188,-115,11,-118,-47,-181,61,117,55,72,28,-105,63,-46,-30,-101,159,-25,19,-66,72,-149,-151,54,37,139,6,-197,165,-32,-46,-188,-171,-0,-103,-195,152,223,-21,-43,-21,-103,53,1,-34,-172,-134,-413,42,188,-174,-146,94,60,46,-37,-113,58,-132,25,33,63,-113,-118,158,125,6,-75,-75,8,-61,80,-34,-71,-199,-82,66,107,16,-4,-104,-174,-221,-77,150,139,-144,-58,-49,-11,-105,-236,128,-102,-194,-183,-10,-27,98,114,79,-113},\
+{96,14,71,-9,12,-119,-48,105,18,96,13,62,7,-125,50,-83,114,-148,-60,73,-89,47,-123,-69,-50,104,101,137,71,155,-35,155,-174,44,56,89,177,74,113,-115,136,-201,2,-13,40,-111,117,-106,206,-154,17,-118,-110,174,-2,136,24,146,184,83,185,45,-56,166,-148,-237,-117,164,12,56,-82,74,-8,93,-18,107,-117,60,-86,-77,-48,-29,26,-29,68,-89,99,159,80,138,192,-45,-37,-60,-29,-54,-47,91,-76,-8,-30,48,69,51,-122,140,-11,-83,-111,-131,2,158,-2,-137,-82,119,178,-34,177,-195},\
+{40,93,-82,30,-37,57,2,85,-47,9,-23,81,-76,-129,11,-92,-181,-61,-198,6,-114,-125,-108,74,117,-34,-165,-56,-17,-136,185,153,-30,-152,128,37,195,-13,-14,-123,-107,-162,-84,-185,-46,55,74,-70,9,-32,62,-159,141,48,168,134,-160,11,-17,54,166,-97,-112,-154,-112,6,-32,-120,123,-141,-75,5,-90,112,63,-159,33,170,-68,133,137,35,138,93,18,148,-77,-24,133,-148,158,-22,155,21,68,-163,-7,138,78,-122,-103,157,121,-126,-153,151,-24,-168,167,-78,-95,81,21,-173,106,89,-82,35,9,-3},\
+{105,-43,-253,-23,55,20,-157,-179,-242,-28,-25,-47,144,-68,87,52,-103,168,-34,27,41,-154,-166,39,-48,5,19,-92,36,-124,31,26,-173,-108,66,153,-25,-68,100,-30,-32,82,-75,57,-57,104,82,-105,127,-149,117,3,153,-58,-159,-13,178,222,144,185,236,-93,-21,99,-109,50,113,-168,128,63,57,-192,195,180,33,22,-68,-76,-18,193,169,-110,52,-57,-72,-45,-17,-112,-139,-132,-134,82,103,19,-36,142,25,-2,-22,115,-122,-68,30,-127,-65,135,-165,157,-186,-42,-27,-49,172,130,5,94,53,91,-101,46},\
+{139,19,31,-26,-86,-105,48,56,-226,-177,115,15,-60,86,114,-121,198,-43,-150,-190,-45,30,168,-76,-156,56,-251,90,139,129,-47,-123,-179,-64,113,-144,167,-48,-165,92,131,182,-72,18,-126,5,-19,-9,13,-41,51,75,-141,-98,-90,-2,-66,58,65,185,-21,155,-107,47,47,93,17,-70,-177,25,-88,39,135,-51,143,130,-54,-93,-83,165,63,58,-127,139,104,176,41,-49,-2,36,183,-39,-16,99,75,58,169,-48,30,155,-206,-50,157,165,-132,70,-94,140,67,-81,-185,-65,48,64,16,-146,-172,-126,109,-61},\
+{45,-180,-141,104,-128,187,80,48,-148,-219,-224,107,-109,-79,-38,-88,-112,-80,72,49,-31,110,-84,44,103,-29,94,-100,166,-104,-83,-121,-74,-153,-49,-26,47,-65,-152,-177,78,-59,14,-62,-99,98,17,-87,78,-128,60,126,-7,72,-56,-25,130,-80,-30,-109,-148,-73,131,-47,-53,-19,-109,74,199,71,-137,88,-59,-39,107,-119,-88,89,-151,5,7,-166,22,-94,-164,-26,-113,89,-200,-107,-40,-62,-82,-108,-100,22,-107,-53,110,-36,126,-4,15,149,133,-67,18,186,42,-42,-215,131,40,-47,134,-229,70,160,-172,136},\
+{-95,146,-230,-71,-152,-148,-69,-81,-296,65,68,-68,170,-11,25,81,-86,-62,100,-6,55,-170,136,125,19,-134,-225,-20,122,61,-38,194,-60,13,223,22,155,54,48,-207,-35,-138,193,119,127,37,-105,169,74,-43,111,-132,-94,162,-79,173,152,150,98,-102,74,-40,63,-58,64,11,31,-196,43,-41,99,-33,151,140,90,150,159,27,-19,106,44,102,109,129,-59,155,2,-118,-81,110,10,-38,-169,168,52,223,-147,87,126,-8,-98,-130,140,42,76,-116,-77,-99,-28,-47,-180,169,28,-0,3,30,172,-151,-104,-67},\
+{-8,-153,125,-67,2,-141,-20,-52,-129,43,-94,98,-32,-115,-82,30,-121,54,-111,-38,-69,139,-65,-115,109,-84,-110,-109,-93,67,76,-15,144,-113,4,-92,-93,90,-46,53,-155,-26,-132,13,-131,-60,-103,-153,36,156,-164,100,48,-99,-10,138,-173,-46,-71,-170,-154,-138,-23,6,125,-72,-134,150,133,-137,80,-39,-153,17,55,26,20,-132,-88,-121,-176,-110,-90,-136,136,-117,-39,9,3,-9,-86,-138,-67,-43,-64,-110,-84,-81,3,38,-144,-55,-142,-126,139,-94,71,-107,-24,-92,-168,138,115,-144,-163,32,12,123,14,-31},\
+{-202,-106,17,95,-62,68,12,109,82,127,-126,-91,118,-161,156,155,106,199,164,19,150,-262,-53,0,232,-15,120,233,-146,-269,-35,93,199,-10,6,-32,36,-157,-100,-261,221,298,-207,-67,-30,134,-55,133,179,97,181,-35,83,114,-5,-39,24,47,8,66,-67,5,82,-99,98,-120,-149,-159,104,-175,132,139,-101,215,-18,79,-210,24,167,-9,-20,85,21,188,117,107,91,-12,37,-123,-283,-40,-93,-52,16,239,38,33,-78,-174,-85,-35,51,20,174,121,-30,184,70,-26,-140,132,77,38,-144,148,62,-58,-29,107},\
+{154,223,68,146,35,-162,-159,208,157,-28,-146,-15,-166,141,122,-79,119,119,92,51,144,3,116,-184,-138,71,153,-117,-117,50,-182,20,113,-4,70,13,-63,-48,-229,-85,-77,94,139,21,121,-34,-153,80,-147,73,222,60,-44,-4,113,73,102,-253,-166,132,-78,-68,-178,-83,132,-66,-190,-43,-140,-45,-112,63,155,-27,44,-172,53,210,177,-62,62,139,89,193,14,34,-80,-58,126,130,184,141,175,-17,45,-72,-89,-11,-96,226,92,-50,-43,-53,-65,103,-105,64,-224,-34,139,157,-33,85,-166,43,-168,72,-242,-65},\
+{161,-19,155,88,-149,14,-141,66,110,23,-30,-200,28,27,-5,5,12,53,87,156,-53,7,-207,21,-122,-179,35,142,81,167,133,-191,150,-179,-20,-8,-1,-102,202,-35,233,-243,65,69,-63,104,-2,-163,97,172,114,-161,-35,274,37,121,-107,129,-239,-255,3,133,167,146,-15,54,90,264,210,-71,-168,52,-56,60,116,141,115,-50,-87,157,186,-190,-132,92,94,-154,-141,-81,-44,26,-128,110,-80,-30,64,-123,-17,-223,97,122,79,-230,-60,-79,14,-10,119,-122,221,-105,60,50,-182,-23,130,240,-11,-123,17,-132},\
+{83,-70,-118,-13,47,-39,35,-86,34,147,64,-208,125,63,34,46,-127,66,125,74,-125,-90,28,70,-52,46,-62,152,-14,80,138,56,109,-106,44,101,-11,-90,-100,65,-151,-164,-90,-157,2,-94,-21,65,6,169,41,-1,163,-80,8,-186,-172,-138,47,129,-19,-93,9,-69,-106,15,-110,56,-195,-55,-102,174,172,-56,-88,119,-86,24,124,-131,-169,1,-212,-163,-79,-181,-88,-2,-22,143,-63,91,-131,106,-79,-98,-11,163,49,-22,88,-113,-124,46,106,-16,-91,-146,97,-217,-4,-16,-193,311,37,145,59,-153,152,-122},\
+{174,-93,-98,137,-15,126,-126,-100,-159,-241,55,142,135,-184,-53,36,-18,73,-163,-94,218,-33,66,-151,-129,160,95,30,-48,-138,-162,66,34,88,163,117,-86,5,-145,26,50,146,-45,103,-51,296,42,-72,-4,144,-32,17,-49,173,76,-328,174,-41,179,-28,25,-178,100,43,-16,147,-35,-227,-26,114,44,-75,179,9,-173,-76,54,181,5,87,-66,-267,67,225,-138,110,183,184,-95,99,-215,53,99,-48,145,-24,172,-73,-85,127,15,6,-179,-53,-125,121,84,20,128,76,-62,162,-35,-81,81,-7,42,12,112,-142},\
+{118,-42,102,-20,-8,62,-166,89,58,-76,-102,-61,141,-37,-199,113,-19,35,-46,92,-88,-217,-126,-13,-97,-72,0,-53,46,57,99,146,-165,-48,62,-19,-158,46,243,-139,-135,-149,-130,-185,-91,145,-38,100,26,60,86,37,100,-151,147,-174,-150,-63,-195,162,-6,-88,-67,-20,-82,-178,-107,-151,45,2,-22,28,-5,-137,-133,36,-113,63,15,-104,132,-93,51,63,9,-180,24,-201,121,-92,-199,-77,-153,-83,-154,121,-179,47,-98,-110,153,-170,-3,-176,46,-152,-57,139,-51,-142,62,-59,-173,8,-138,-121,150,52,51,73},\
+{179,55,98,-101,6,211,165,-310,-149,-78,-141,245,24,-29,-147,82,65,140,-158,-186,-167,-18,-82,-250,-69,114,272,40,-97,87,17,186,-116,81,126,-89,-116,53,157,-163,113,12,4,76,-163,-82,182,-86,-5,77,-26,104,182,306,-23,63,115,62,195,-58,-35,-138,-158,-36,37,131,91,-267,168,47,62,100,-86,151,-76,-89,-109,-221,-75,-165,-225,-63,45,-189,-23,43,-191,184,-153,-11,-3,234,45,-38,-139,-140,-172,-23,197,-201,137,179,-132,-186,-136,162,220,-26,257,-0,184,-124,62,107,118,138,-97,146,36,193},\
+{-103,150,-82,-137,-86,-47,29,-20,8,12,205,106,-4,139,4,35,22,162,-76,-184,68,8,-137,52,-167,-85,182,45,-75,17,36,160,-46,-25,-102,140,87,-93,11,-103,74,84,-109,-60,90,-24,146,191,-61,-37,-36,-81,146,-80,-28,21,119,-163,-20,22,109,156,-82,-11,-182,107,148,-97,69,161,-49,140,136,-78,170,168,138,-44,-109,120,-195,106,102,67,105,-95,-90,-109,-101,-108,-130,-159,113,56,-78,-54,-37,-38,115,187,1,87,35,-167,-7,-99,7,-167,-36,80,-124,110,153,-87,69,78,-118,192,136,37},\
+{121,-31,15,-212,157,27,-75,-5,205,104,-115,162,87,59,-125,93,-194,64,13,-109,-109,-95,85,-91,-212,-33,-127,15,70,35,140,30,-140,23,-79,-67,-67,1,-214,150,149,-109,-140,70,135,7,121,123,81,156,-61,-168,89,-210,78,-5,-127,-24,98,-53,15,1,80,123,-13,235,112,39,151,-92,-143,-166,-73,-129,-67,-134,-63,272,-70,129,-216,147,-167,-199,-93,-176,26,-91,205,21,83,-80,172,-91,-88,3,151,138,-177,20,19,-202,-167,66,69,87,-135,153,-57,159,137,-3,-84,14,146,-116,-40,97,-156,-156},\
+{175,55,-99,-15,13,-84,80,98,-166,125,-45,61,224,109,-171,56,56,-122,-124,91,100,-11,-24,128,-39,-192,165,-106,219,-87,-46,-111,-19,-175,-24,129,-177,177,142,-241,104,78,232,-145,-8,-17,16,185,-93,28,90,197,-92,-163,-62,130,-3,-12,-81,11,141,-127,-233,-3,-117,106,42,-126,-177,-121,148,-53,35,222,-102,-6,-43,102,-108,128,4,-109,-57,175,52,-166,-38,12,-129,-60,171,133,-134,-46,46,-18,-110,91,235,183,-91,135,25,-21,-38,47,-122,20,-81,-337,-309,-138,137,-61,-73,-179,62,3,-58,-5},\
+{164,5,-105,-152,-66,17,170,-5,-168,-110,91,-165,-108,54,-134,-110,152,145,-17,126,-101,29,10,108,-79,-28,5,76,40,-30,-78,-66,45,-69,-125,-80,-137,154,-146,-26,148,-180,8,41,-36,-206,86,-21,-80,-95,-140,-118,-150,108,97,-30,85,143,-126,27,156,-55,-36,66,-130,54,5,59,-158,-121,107,74,78,-90,-44,-43,-160,170,46,-46,126,-164,-171,63,-156,183,151,-53,198,111,-6,27,-166,67,57,38,197,87,-68,34,130,-160,-152,-24,-173,-148,137,161,-181,-121,57,-144,-32,133,-65,-46,3,-77,-74,1},\
+{237,-41,-172,161,-169,-183,-9,118,43,-122,-92,280,54,-162,-91,96,-58,-125,-0,-70,251,-99,19,-89,144,89,-50,-79,-6,-29,-104,105,-5,-89,-160,-243,38,-144,-141,141,221,-71,139,-156,69,7,112,-61,-71,35,-73,108,34,-106,-4,184,-67,-91,-59,-167,140,-87,-1,-0,-39,6,97,38,49,-168,-139,-129,-79,-44,-50,2,79,293,-66,-26,172,94,-215,245,-92,139,8,-149,159,-135,69,-99,-104,148,241,140,56,167,59,-91,43,-232,158,-152,-123,-38,110,-50,32,3,42,199,-120,-143,201,-208,58,94,-2,151},\
+{87,-37,40,97,-103,155,152,-189,-136,45,245,161,-107,-91,-132,198,-24,111,-52,-210,24,27,-57,-41,2,-182,142,-2,-101,42,55,-13,-94,-126,-2,-65,19,-26,-2,66,164,-112,-160,65,-88,111,3,-33,74,-108,-145,-20,59,68,66,-117,-36,-147,-99,184,-28,40,3,-156,65,173,205,108,-214,65,174,-89,46,70,-109,-9,57,-50,165,211,-210,-22,144,-120,-63,-92,63,-166,-9,123,19,-140,37,252,-89,174,-85,-117,-93,86,-269,-55,52,-42,71,94,-96,36,58,-68,133,18,-123,-2,220,3,58,133,134,89},\
+{14,84,-173,60,137,-160,18,-175,-61,-70,43,158,140,104,139,-126,-56,-176,86,-111,-195,-55,114,30,134,-200,-75,116,-32,117,165,-51,-48,-62,-43,-117,128,192,148,93,38,-199,8,-64,44,-105,-52,119,125,203,-79,65,-60,-112,-110,-212,-94,3,-151,-161,-141,16,155,166,-50,-16,209,-86,-116,47,-49,138,80,53,-7,161,100,-118,62,-21,-15,70,155,36,-28,139,163,69,159,65,-154,-170,75,-170,5,-49,164,62,79,104,-124,108,39,-172,-155,35,-165,-178,169,-53,29,-193,-166,-32,60,-99,60,176,228,-13},\
+{10,158,35,-118,15,-143,-136,-180,-96,-184,76,6,-117,22,200,222,83,-127,186,123,-41,157,182,-24,241,48,191,-99,-102,104,-27,96,-79,105,-37,51,-105,130,12,-161,-110,140,-160,122,88,95,201,141,-140,101,-124,128,47,-161,98,112,-35,-109,187,5,146,10,110,-143,-55,-141,197,-197,-143,-74,-53,108,222,-26,-169,-147,2,139,20,110,120,-224,-221,23,-122,-113,-161,209,-17,-51,18,-74,-123,-183,-32,-36,-22,70,144,-33,70,-21,52,68,-76,-40,-65,-137,11,-4,11,-85,-30,6,-137,27,-177,-52,-24,17},\
+{249,143,3,-173,-104,-163,76,202,6,-37,28,131,1,119,-144,-66,-33,143,137,71,-75,11,96,-87,-174,1,-119,-87,-156,205,79,-124,-155,-129,72,135,126,-144,25,128,-11,-94,-68,-133,6,169,-5,-118,5,92,99,14,49,25,-124,-86,-38,-71,-7,-72,-142,-158,44,-59,229,92,-13,14,35,-22,-84,-84,194,-105,-74,29,58,199,-31,-46,-57,-66,-104,84,-144,109,29,-84,137,121,206,135,169,-75,-86,73,126,-138,-6,-11,-179,62,-155,-134,104,-162,158,14,40,79,-83,-15,172,-181,167,-1,-167,-21,-218,10},\
+{69,47,-17,59,59,-94,-90,96,-195,-85,156,52,54,148,25,-184,-69,-14,-89,-17,95,-168,50,114,201,-26,135,152,-138,55,-131,243,-73,-184,26,144,96,-191,264,-91,-189,-157,-109,-103,38,83,115,-74,-128,-114,176,-88,5,148,-74,-220,154,80,-60,-127,-86,-165,-277,-183,-158,181,143,-65,-139,-98,148,130,224,179,156,-104,14,-205,139,-45,136,-201,-55,-134,138,82,-93,-64,-138,-134,-286,44,-227,-166,-177,-58,133,-89,77,192,68,127,-149,164,-163,134,24,-72,116,19,75,-51,9,147,-94,-162,110,135,-52,95},\
+{205,29,112,134,125,6,-146,-102,-45,-127,-62,-155,68,173,121,142,-143,-182,-28,-155,145,130,-76,91,25,126,54,142,199,182,-132,-123,113,-166,-101,-87,-89,-34,-12,250,-80,105,-183,34,106,175,174,-102,47,-75,165,-153,197,219,26,-63,128,-202,-75,20,-60,-40,-27,-154,26,97,146,-86,-6,-90,-116,40,5,38,-34,94,-130,151,-113,-113,131,-291,-104,177,106,87,74,-117,167,-45,166,5,-17,125,-51,7,105,-202,90,257,-58,90,-137,36,-65,120,-48,-183,-107,50,-176,72,3,60,157,117,-168,156,11,139},\
+{-55,-93,74,130,114,-48,87,-17,71,89,-90,-39,-151,52,-181,67,13,-138,85,35,-156,49,-88,93,134,41,36,35,-135,-162,98,-198,-52,-66,277,90,62,-104,137,185,167,117,25,19,22,-59,-149,158,-22,99,-38,-197,82,-136,103,114,-10,-214,-14,-111,-209,116,18,144,203,65,70,116,165,-160,-132,209,-148,-14,96,-138,-135,-224,-177,-62,88,158,48,89,139,-202,-189,-138,-74,168,8,197,-174,-213,88,142,-118,82,36,149,172,-106,176,113,-82,12,-114,-191,113,-111,-58,-184,-230,21,122,96,20,143,88,-126},\
+{-138,32,-90,-123,-78,56,156,90,-26,179,51,23,10,-114,27,-141,-146,-61,140,130,-54,68,98,-186,-174,-25,-187,-115,82,123,58,97,-123,-69,28,-97,14,46,-179,157,-30,-31,-94,-47,5,40,-117,-46,-125,180,-12,-62,118,-139,74,-65,143,54,-20,-29,84,120,-160,127,46,-53,-117,115,-130,-91,-4,-120,-5,-36,-147,-48,-90,70,-2,-162,-175,-155,-86,-82,-10,129,-156,141,8,-58,-116,210,55,75,72,15,-81,-152,161,11,-107,112,-46,81,60,67,104,-31,124,-190,48,148,-5,-165,-88,-28,147,53,-9,-125},\
+{-123,-3,-63,151,-169,59,-140,89,-159,-168,-107,176,15,147,-40,173,-31,162,-11,-86,-205,96,-30,30,4,-109,26,-2,-185,-115,-195,-74,79,8,16,-68,111,-24,53,-23,127,138,-45,-206,-116,-193,61,117,-141,-127,67,-46,155,64,-168,239,-79,14,57,-53,-163,-168,-100,-110,80,-21,-58,90,-204,28,-113,99,57,-25,-16,-28,-15,-120,139,-52,-34,125,239,253,188,88,53,109,160,6,203,-52,-42,24,-165,-115,-37,112,-160,165,-140,14,-160,2,161,82,-124,-170,-151,-140,42,21,216,48,31,52,11,-13,212,64},\
+{-1,154,-123,147,80,184,35,-58,-57,-15,134,-19,-53,48,-150,151,207,-123,132,-15,-98,-170,29,93,132,-127,242,-77,-64,-57,-63,66,67,13,-97,-12,-6,-131,1,-139,-164,-11,110,149,-59,-88,-71,122,-113,-17,167,121,-121,-184,152,-77,85,-153,95,123,19,-55,-125,121,23,-164,-111,36,117,57,147,-139,47,-49,63,-25,64,114,-42,-7,-209,167,-132,-40,-173,-72,-122,-44,-86,-115,-86,-154,30,-66,25,-144,-147,35,-138,-47,-119,56,162,-122,-37,-116,39,-144,-99,-94,158,90,99,221,-101,34,7,14,119,58},\
+{134,-167,162,27,128,106,-106,169,22,-144,160,267,-73,-18,-71,-165,6,27,25,-85,74,96,-83,28,176,201,-115,-60,-106,34,77,134,63,-101,97,-31,173,174,-219,99,56,160,107,-1,-126,-76,-10,-42,85,-122,242,-1,-0,-108,147,74,-153,-281,-37,98,-115,-87,69,-116,-123,-100,-36,-49,125,156,97,-30,143,107,-102,-105,-46,174,29,166,86,-200,-251,-14,-101,142,-17,86,186,59,-216,-172,-101,-27,73,219,149,84,-147,-93,-59,-36,-189,-110,-94,215,48,-150,59,-24,9,143,227,96,-97,63,-275,-73,20,62},\
+{-90,76,17,117,-152,34,-131,-142,157,176,-114,57,45,74,144,110,189,115,-176,-51,-112,-167,-111,-19,231,-24,96,134,-32,177,-86,-238,96,-217,-57,88,-52,130,15,-53,70,-141,-168,100,-96,-168,-16,35,-97,110,141,-179,-55,60,169,115,-21,-244,-149,157,71,-68,-93,63,160,49,182,-46,-125,-14,103,146,79,-95,122,126,132,-220,43,165,93,-94,23,-26,86,99,189,83,38,-172,-140,135,-267,-134,-131,53,124,-116,-27,5,-97,-151,-135,-97,-130,-195,-105,168,-196,134,-150,161,-200,21,29,16,-130,172,-159,-33},\
+{155,-157,100,2,-154,12,15,-112,-134,-158,-156,9,78,187,-70,-51,23,24,-130,-187,-23,-64,117,-138,1,-147,-141,-174,-61,63,-133,33,-90,-177,-126,140,15,-139,23,-126,23,3,-71,95,-139,-5,9,153,-160,68,117,-128,113,15,4,-147,3,98,68,-9,-96,67,149,136,49,4,-9,111,-29,-53,-154,63,-158,82,-100,-150,-43,-18,-72,165,162,67,-62,-95,1,38,-114,105,-79,70,-105,9,38,-88,11,-126,-96,156,40,199,124,15,-34,72,83,-10,-148,61,42,126,69,-142,99,33,90,-150,59,133,110,-1},\
+{-60,123,-177,-131,96,-48,-129,43,53,-155,145,-11,22,11,94,-40,125,125,4,-214,-120,-113,-162,-77,-116,-62,-125,93,75,142,146,-149,9,62,-52,42,31,30,158,77,-114,54,50,107,93,103,-75,-50,129,-89,71,109,-159,-66,131,63,108,-137,-103,46,103,-123,-150,-94,134,106,58,-79,-124,155,159,-75,29,32,-100,-116,63,124,-170,-96,144,193,-96,-6,-118,62,117,-42,7,137,-153,3,-58,-21,195,-44,-39,42,62,-37,-7,4,-165,-91,-46,147,98,-175,48,123,-103,-157,-174,100,23,139,151,-126,90,144},\
+{-142,-69,-92,225,-62,-111,-33,25,121,-272,-60,106,-109,73,-196,150,-140,141,-107,15,-0,-87,-114,-98,-64,-29,124,40,58,107,-168,75,162,128,-54,-6,-102,142,26,191,127,-27,73,70,91,-146,40,136,-11,-139,-8,-111,152,36,-95,-124,-77,-115,98,45,66,-171,-131,30,32,-11,-101,-170,171,116,91,-87,86,16,25,-100,-96,106,-160,198,176,-64,-98,-132,-112,74,-6,18,5,-140,-88,-2,-178,72,51,35,-145,25,47,-116,130,-36,136,170,-86,-106,-6,10,57,144,-167,115,-191,162,-68,-44,-72,-86,-144,39},\
+{-20,-177,108,-104,-130,54,-52,-7,35,-128,45,57,-21,-208,110,143,-2,76,61,-111,145,-77,165,144,253,121,105,50,63,19,43,-13,93,-162,117,-33,200,211,-116,-49,-110,60,-22,3,38,96,50,-94,-94,-75,134,-24,-1,-88,51,56,-107,-191,14,-100,-40,-89,-105,80,-108,-241,77,33,-120,-107,99,-206,-58,-111,-19,125,102,235,16,-143,-56,156,-96,89,76,72,-115,185,219,-32,-50,-183,140,44,-8,-73,155,162,-220,183,-106,3,60,-25,-54,-145,-18,-125,-136,-114,-142,56,75,-153,3,10,-157,151,190,-27},\
+{183,243,-180,43,23,-177,147,-3,-31,-137,-117,-83,161,-66,-152,24,-212,30,176,-37,51,33,109,-125,179,191,118,41,91,10,-102,-99,26,-81,167,30,-210,76,-141,-51,-96,-64,69,49,-87,-187,-80,-168,-93,221,-8,-124,230,-10,59,263,-33,64,140,-70,70,-164,-63,-37,-242,11,126,-133,-28,-62,-62,19,-145,-31,-15,37,-53,-84,-36,137,-152,173,108,-14,-125,-62,44,-5,-48,-36,196,-26,103,-52,101,1,-152,1,-103,-57,-169,3,169,-228,-65,-18,-163,-16,164,189,-19,-11,110,130,165,-184,-181,11,148,-40},\
+{184,-95,161,-64,-107,-217,127,9,-109,-107,225,-119,-181,39,133,-114,202,-131,133,-7,-25,-154,-5,-26,-190,-132,193,-135,127,23,129,-92,54,55,183,252,7,-177,-104,29,-112,-240,-116,53,-10,-102,152,22,146,9,-140,11,-20,138,-140,125,-95,77,208,187,-90,5,149,-21,128,-75,168,62,-22,137,155,-22,115,-35,59,-40,138,-131,-101,71,98,-59,14,3,168,112,130,143,-168,88,109,32,167,110,144,128,44,-59,-108,150,-51,75,93,-12,162,25,138,162,-235,-52,-231,41,-242,75,-168,144,-106,148,-54,64},\
+{187,108,68,-142,63,31,-169,60,38,12,-99,55,12,30,79,-114,66,-9,-72,-204,-61,-11,-19,21,-151,-66,52,88,112,121,124,148,132,-54,109,167,-66,-230,-112,75,212,-84,129,216,154,-62,130,-50,72,102,119,-130,-70,86,97,-93,-57,212,272,-69,88,145,-102,12,-86,179,48,-0,105,138,128,14,39,33,-28,-99,-127,-38,150,38,12,94,92,-120,-59,4,33,136,-219,97,138,77,-156,41,120,-32,153,119,137,95,15,36,-78,188,48,116,167,53,150,174,-32,-86,-77,-53,64,125,-60,-14,-41,13},\
+{-42,330,-37,65,-167,-120,-39,252,-51,103,-161,-179,-74,86,225,158,-223,181,65,202,141,-33,-41,-33,-14,-15,134,-178,-135,123,-124,137,-127,62,168,75,222,-150,-121,-62,-203,59,-181,-116,-174,-219,-56,37,-52,-123,7,-207,-28,-210,-21,253,102,-182,126,51,59,161,196,-123,-75,-145,-212,251,-78,-175,-161,-14,47,-222,180,-54,171,-84,-165,105,-148,-76,95,188,-170,-109,-8,19,-99,109,189,81,-26,101,-73,140,-64,38,117,-113,-26,-13,143,-62,39,-179,-153,154,85,-128,-106,-153,193,124,-63,-198,79,-65,-118,-168},\
+{-170,-19,169,-135,-180,164,-138,-82,-39,109,-143,134,73,-34,-28,-176,96,213,165,-202,-11,77,144,129,173,-136,-146,46,65,12,-128,54,-154,51,194,-25,-44,195,163,137,-142,197,-40,-161,-136,-166,-86,12,172,-102,-138,-163,-132,-97,-156,123,-93,-44,-209,6,-19,173,-231,103,35,-176,147,223,39,51,155,-129,46,-74,144,19,-30,-85,97,-175,122,93,19,26,-160,32,-122,183,-154,-6,-0,240,-181,-141,3,41,-138,24,59,48,-147,136,-74,77,121,-207,-25,153,125,151,-124,-30,-144,-134,125,-63,-140,151,167,-71},\
+{71,135,182,162,152,113,163,136,-108,-26,-190,50,-107,88,-204,10,-141,135,-160,-68,-151,137,24,19,10,-30,63,126,-129,-45,-20,-62,108,262,243,89,157,-85,-76,54,162,-79,-7,26,64,71,-11,43,226,-44,114,-74,-5,149,-131,-146,-17,106,48,-10,-47,-138,-90,65,-118,111,21,-181,27,8,-8,86,-166,108,-146,-220,-74,-37,-12,-83,-115,36,177,4,80,-68,-102,157,-240,-159,73,-12,-197,13,114,-192,-80,155,-21,-285,189,47,68,187,-179,74,127,-210,149,10,40,12,177,-55,154,64,-179,-127,24,163},\
+{24,-66,188,64,-69,58,1,109,-69,136,-30,-149,152,-12,-64,7,-53,-24,-2,235,-117,47,-82,-156,161,133,-64,-52,155,8,-110,-27,-78,133,168,7,157,24,-73,-128,77,58,-146,44,-102,-133,102,-87,48,-26,-85,-93,-61,-27,122,13,-179,95,-57,38,-237,6,144,177,152,-81,49,-91,-50,126,-129,144,-56,-207,-141,-86,74,-166,77,-140,60,115,-60,132,129,2,-121,16,142,64,70,-98,-140,-157,-92,199,17,-19,-60,33,5,188,24,-149,45,-55,-59,35,-131,-13,-75,-187,-144,-171,-112,-57,-115,17,75,46},\
+{-122,118,106,215,-121,-183,-104,-150,35,71,234,-187,28,133,102,-141,-128,-99,-34,-197,153,48,70,-105,116,143,217,2,156,-95,-105,116,-172,-10,229,12,149,-116,-140,-149,-74,-111,-122,127,8,54,-140,-148,129,95,-203,67,67,141,-29,-174,-171,192,56,222,54,-38,-67,88,116,-281,-93,-101,129,70,95,-145,139,-137,-31,-13,91,-70,-172,99,31,-96,125,65,59,100,178,-33,84,-43,101,-3,19,118,175,22,55,200,-146,169,-132,8,150,176,-33,-115,-68,71,-42,-172,-25,-25,18,109,-57,90,27,-27,-1,8},\
+{-209,74,47,330,151,-263,98,54,76,66,-137,-151,-36,246,-70,-24,30,-106,-37,166,164,71,112,39,24,20,207,84,135,128,105,-45,-168,-195,196,-189,48,151,-77,126,-154,-203,4,-178,-15,-74,-97,55,-140,101,-8,83,194,73,-62,40,59,-1,-154,71,44,-95,-45,-21,208,107,-92,-64,122,187,-82,-195,0,218,182,60,5,165,-14,-121,187,149,-21,153,-4,100,-176,-51,239,122,-5,-193,-87,-163,-12,-238,35,103,-112,282,8,21,-40,142,-116,165,-148,-198,-69,-136,-16,-165,115,-42,-61,45,-197,-47,131,-39},\
+{-128,107,85,-141,80,-79,129,-123,208,58,-199,-210,-41,-12,115,-89,141,67,-146,267,-305,38,-112,-121,7,172,78,-95,11,-169,1,179,93,222,23,238,24,-26,80,167,50,-4,-82,170,-31,-117,12,20,-121,71,-130,-71,5,-47,127,128,138,226,100,9,-104,-47,-150,17,1,36,-23,179,247,-80,-109,107,-67,70,28,-65,107,-309,-128,-258,200,145,54,-54,-119,-122,-108,4,-107,12,12,232,117,12,-79,136,25,-159,12,-105,151,-44,-3,97,142,-43,10,137,19,-168,204,-43,-79,-70,-28,-67,109,-27,93,-20},\
+{23,-107,14,-18,108,-107,150,55,-232,-288,147,-3,-75,-41,-35,160,-10,-149,148,-154,90,-73,-187,80,112,32,-146,-77,123,217,-2,28,129,-53,-179,-34,-8,32,37,175,55,61,-50,-77,-174,-318,-39,106,-84,-6,117,-167,235,90,90,-20,115,173,-59,63,-31,101,-44,-104,-159,58,-147,187,20,-144,-97,-91,-5,-228,14,-81,34,71,130,94,3,-59,-154,-164,-131,69,39,-45,-26,-56,-1,201,110,-164,65,112,-170,69,165,-188,204,249,-1,6,10,136,141,7,-112,36,-97,50,96,-128,-229,-86,70,41,-184,64},\
+{-150,114,-67,69,-38,49,-164,45,-145,-202,62,158,-50,-121,-74,216,125,7,-33,40,16,-172,-14,139,-197,-124,43,-45,-49,-119,-160,98,-140,-151,-163,-183,-67,147,158,130,166,-34,156,-123,35,-24,171,-103,84,74,97,-189,-146,-102,-151,193,-96,-71,-70,-23,107,-17,-8,136,161,47,132,217,3,163,-74,-19,-70,-41,-35,-91,-198,-205,146,63,79,73,117,-3,77,38,144,58,192,30,55,-237,182,-36,-10,-78,-75,17,52,172,126,-69,24,19,-155,182,-177,-157,188,-29,13,80,123,-81,-57,-9,-197,12,5,-27},\
+{-178,-146,122,192,82,152,160,57,36,-115,-36,99,102,-173,40,166,118,-254,95,-58,126,107,-104,-31,-49,73,72,-74,37,67,-224,-70,212,98,-124,-77,152,-83,163,-16,111,152,-228,-81,-4,-72,-162,-31,-161,-24,-47,68,-169,-207,50,154,-93,-109,18,6,-287,-119,-40,79,129,-36,-219,95,125,-172,-143,166,159,-83,-118,75,144,138,2,61,145,-43,193,88,-21,-72,150,101,-146,95,-78,-135,10,96,120,62,59,-60,-107,-109,-15,63,-109,-22,-28,-63,-53,-166,17,-119,108,-173,261,102,-68,-55,70,-109,98,-147},\
+{-157,-143,-52,-9,-94,100,-56,111,68,13,-25,64,-56,-45,-170,-54,96,62,-96,-122,-2,-71,28,-35,-76,56,-198,159,108,8,-67,105,-132,-10,-181,-21,-113,54,-117,-4,-36,-79,-2,95,-83,-46,74,124,-67,-24,96,71,16,115,-155,-51,46,-121,29,-102,38,-37,149,-22,31,-67,-54,158,-127,-117,-7,-131,-100,-74,-91,-162,-119,-30,3,156,-169,96,29,-35,113,-78,18,-70,-102,124,-105,30,-137,81,-101,-110,16,-92,-191,12,-59,22,146,-80,-101,-122,-115,141,-117,-15,-79,133,-23,49,-42,116,-114,129,43,12},\
+{-139,153,7,154,28,77,-120,66,102,40,-212,-185,28,-142,-156,-0,-63,47,126,119,96,50,190,-107,99,144,-160,17,-158,-96,-121,49,68,109,-90,132,90,57,197,-27,104,102,-105,-224,121,-90,-147,-19,-58,163,33,-10,205,-163,-164,133,-98,129,-29,-129,86,-173,-24,190,-65,61,-168,-14,128,140,38,-59,103,-47,-94,-200,-104,2,36,51,-157,-192,-33,-99,132,146,-34,38,178,75,-86,-6,-42,-55,-175,-49,42,9,-69,-152,142,146,92,57,-74,-47,127,76,61,-125,129,-24,142,39,156,90,25,-43,76,56},\
+{213,10,-144,-43,-169,93,-164,-36,-51,-33,-129,-100,37,-19,76,-91,-131,60,119,11,163,0,9,72,-123,-144,55,-31,-10,21,175,12,57,-118,-66,129,-70,199,86,105,44,120,-79,-55,-33,119,7,36,-75,85,-210,165,-82,-122,-134,-69,226,-61,-47,-161,-33,-58,-54,-122,-130,-140,-168,-187,32,90,86,135,123,43,-124,-61,-21,185,-133,-1,36,64,160,-7,98,1,-117,-195,-111,12,-37,-155,-123,84,24,-52,174,62,123,170,-148,-199,55,133,30,-69,78,105,-96,-72,-177,159,-162,-122,-168,1,96,-11,71,-57},\
+{-102,-4,202,144,-6,-10,51,232,134,94,-66,73,22,135,102,-25,183,-141,-67,-2,-61,84,177,-4,115,-209,-47,170,182,-29,46,-57,144,-116,9,198,12,36,-23,-72,24,-135,194,208,48,-137,-53,-166,46,-72,-117,-11,-107,132,64,-68,56,-5,-71,-2,-110,85,215,-110,200,-76,40,-225,-189,-150,80,-161,-249,48,149,-96,80,33,-71,115,-4,-53,-118,-85,-134,69,-94,79,156,174,6,-223,117,-66,-99,-219,86,118,-163,79,254,-183,-114,-134,106,81,110,168,-34,-131,-40,-163,201,179,-106,-43,-78,-69,-161,114},\
+{161,-83,-142,-29,-69,27,146,69,-63,-105,24,-103,39,95,-46,192,74,-34,-107,-82,79,-15,-170,-158,138,-152,-50,83,-72,157,-118,-91,80,74,119,-97,4,67,-171,63,94,139,-171,86,115,133,57,60,150,66,24,-206,-139,79,41,46,159,13,85,-42,-110,-47,-122,74,-140,-86,-179,-4,-40,-39,-38,65,-118,56,1,-119,105,-35,-68,148,178,20,-117,-123,-32,-114,-113,67,189,35,123,57,31,-16,80,-141,-5,-129,40,-140,33,-130,-78,-35,-85,-56,56,-11,133,156,22,150,-181,-149,-130,-101,-3,-167,93,49},\
+{-9,-142,60,-204,125,-126,1,-174,211,-168,-25,122,-104,160,-94,-187,-97,-115,16,-183,97,-68,172,-157,-253,-164,-138,-84,-113,235,-172,-67,-61,32,-98,-64,-58,-115,98,-42,-154,101,219,93,16,74,-166,-74,-117,26,183,2,68,208,-58,-243,-118,-194,75,-141,-84,20,-52,96,-67,184,4,201,2,52,-153,103,10,116,173,-100,9,342,174,11,67,-21,57,-14,68,-165,175,151,20,31,75,206,168,20,180,83,-94,169,72,122,180,8,81,-101,124,107,149,184,-29,140,133,64,-56,-138,49,162,-88,-112,-167,72},\
+{-56,158,174,135,41,-103,-32,-134,-173,-111,127,54,-102,187,-128,-179,-119,-22,-26,10,35,108,-141,-190,89,-6,124,165,-52,-3,134,13,8,181,152,-95,201,-110,83,63,-55,130,60,-96,3,32,-90,102,53,76,-109,104,131,-15,106,-63,-12,-78,-3,104,48,-101,-20,166,-45,70,165,23,48,204,-114,-190,-103,-42,122,32,145,51,-28,-47,-131,120,144,-186,-80,-80,148,220,211,-129,-62,-11,40,66,-132,-357,125,68,33,-130,-12,140,61,-44,-170,-116,-39,-100,231,-52,-151,47,24,123,-153,34,-177,-94,-106,-115},\
+{-133,-116,-49,-13,-133,-57,107,-1,221,-128,100,86,-79,76,68,4,-152,-79,11,-87,218,-219,89,234,256,18,82,-184,-117,35,92,-80,24,-81,-158,-126,-43,-38,75,-44,211,110,-71,83,-159,38,153,48,-91,105,88,41,-14,39,110,94,-194,122,-82,-94,-61,-30,-35,-64,-26,-142,98,124,-46,-186,-128,140,9,66,-179,-16,-22,140,-168,65,-248,-118,28,-136,125,69,-43,120,113,67,10,-123,-105,-38,-75,50,175,-26,-21,145,-88,-197,109,-192,-166,-197,88,23,-200,-187,8,-137,30,-55,42,61,-115,50,202,65},\
+{-105,-46,51,-165,123,-48,141,-84,-44,-129,-36,-148,-74,-161,-42,-181,194,40,-97,189,175,-219,155,-34,-34,-178,-171,-98,-75,130,135,-163,94,90,144,-165,-148,150,158,-110,-149,-197,120,135,-16,85,127,128,49,-113,70,-39,-102,157,-151,-148,25,-76,-96,-70,5,119,-201,45,343,-15,-45,-163,-1,-30,-59,90,-118,232,162,-0,-183,-78,132,116,-154,32,-88,51,-98,-118,-83,-55,-47,-135,-98,120,37,208,-248,29,-14,150,217,121,168,-81,18,127,155,136,-190,-60,126,-21,100,-114,-59,-95,-4,40,86,132,-71,-155},\
+{-49,21,-165,-80,24,-108,-25,-256,-194,78,66,76,84,-10,25,150,193,-137,-1,-207,-166,147,-140,-24,-60,-58,281,-162,35,12,175,-1,-59,-146,-148,72,35,-29,38,-222,-147,79,-60,148,16,30,-7,-54,121,-162,41,192,-17,-2,-139,81,23,-164,-70,249,-160,88,35,-2,250,82,-112,195,155,67,-168,38,-6,18,-126,176,136,-14,63,-2,-18,123,-70,-110,-58,-93,110,-181,-41,5,-179,94,-51,55,56,-106,140,7,-0,206,-134,-168,-175,15,-150,34,79,-102,104,50,-105,168,-126,-72,-121,-71,114,-174,-178,58},\
+{-105,37,-201,-166,-38,-32,-121,20,55,-131,-16,105,-180,-59,-91,-162,44,-154,-29,-118,-57,-26,-118,-6,-141,134,203,-66,-63,85,-103,110,13,95,-8,-31,-2,-21,-121,144,-138,-138,39,-123,-156,52,-139,10,-52,114,-26,21,-172,-37,20,31,21,56,10,176,31,88,147,-109,117,-232,164,138,-150,-122,38,96,13,-39,39,-142,39,-27,180,161,78,-150,91,-150,-117,-6,-146,-92,-157,-172,1,91,-158,65,164,188,-97,-36,72,-75,45,-145,158,-114,-34,-60,-172,216,167,198,-34,-63,-74,105,-168,-20,-39,129,120,22},\
+{23,147,148,-185,-101,-180,-161,-110,-15,111,32,-108,-74,-33,89,18,188,-170,2,-7,-42,63,-119,-102,-130,-174,137,150,-132,-133,121,-100,127,-142,-69,-24,-69,140,92,47,-74,73,112,-17,-19,89,-114,151,-138,177,213,-32,-111,-10,-173,6,110,-128,-92,-8,-9,139,-144,134,227,-147,136,-140,-181,56,-24,147,112,168,-96,-121,-86,-15,67,66,-139,-48,-72,180,-64,-8,35,80,-168,48,-2,152,-163,30,60,98,13,120,212,145,-74,-91,-167,-27,59,-61,-59,-124,108,-29,98,-4,9,97,69,-83,-40,-28,-162,-13},\
+{191,-41,-106,-44,-127,-81,164,-100,-20,-92,109,-89,99,20,2,23,63,-23,-92,139,-114,19,-125,-214,-41,53,-181,65,45,101,54,72,43,-132,69,-48,-68,7,-80,58,138,12,64,-118,-0,173,161,-11,1,144,-10,91,-104,-7,-157,-92,-17,203,144,-156,3,49,-113,33,178,-61,-83,-123,-39,-22,-3,84,131,-73,39,44,-66,92,-123,145,40,-153,119,102,118,27,136,-136,96,-59,-16,-38,-10,46,-22,74,155,-78,102,-14,-183,12,-155,-47,-114,-99,84,-176,3,-178,79,-127,-118,-125,87,-15,24,-165,-39,-174},\
+{101,-54,151,13,-117,71,105,194,-159,91,-119,88,152,64,-77,-71,-68,-13,-139,263,-161,-169,-56,110,91,-115,-113,160,114,-150,68,40,-51,-162,103,106,194,-180,75,-125,139,18,-57,-197,-122,-11,-107,31,234,142,160,-74,108,86,-6,68,-60,100,-30,-6,171,75,-130,-83,-260,73,-158,-21,-100,110,35,-20,28,10,-71,-47,38,-167,44,-25,176,86,-69,72,79,-51,67,28,51,32,-121,198,-80,-134,-39,28,-29,-127,181,-110,221,-185,-148,149,38,157,156,11,-185,138,47,81,92,163,-141,-47,65,46,-324,40},\
+{81,128,-270,217,179,77,-37,19,-191,149,132,290,-90,68,-197,-8,-39,99,-77,-121,96,-156,53,-260,-168,-98,-121,-52,-109,-51,-189,-124,23,82,55,53,7,2,51,-109,3,173,-26,-116,-97,210,53,107,-98,-213,142,37,-15,-101,-93,-40,50,45,128,31,-125,-83,-35,57,83,83,-69,-132,46,-26,60,150,-97,24,2,-56,145,149,100,-196,-42,108,86,233,-25,133,-131,151,-41,-131,64,65,207,-156,-158,-118,14,-94,192,-199,-25,185,-34,-121,-95,63,215,168,149,60,186,-63,-4,-109,3,-15,83,96,-194,-157}};
+
+	for(i = 0;i<outputNum; i++){
+		for(int j=0;j<inputNum; j++){
+			FcL->wData[i][j] = FcL_wdata[i][j];
+		}
+	}
+	int FcL_basicdata[84] = {102,-88,72,269,71,-91,-48,-24,167,\
+							5,33,25,19,86,-109,-56,90,-36,\
+							104,124,-28,-147,-71,-21,68,-57,19,\
+							17,-6,-11,109,-51,7,-15,122,-10,\
+							-12,169,-33,-52,-61,1,-35,-16,-9,\
+							-19,212,-42,74,-5,-115,148,-31,-3,\
+							-17,20,78,2,18,-2,-101,-51,21,\
+							-51,142,0,-99,-110,59,-50,-65,138,\
+							-139,48,90,84,41,83,-16,-40,-1,\
+							10,219,84};
+	for(i = 0;i<outputNum; i++){
+		FcL->basicData[i] = FcL_basicdata[i];
+	}
+
+	for (i = 0; i < outputNum; ++i)
+	{
+		for (k = 0; k < inputNum; ++k)
+		{
+			FcL->y[i] = inputData[k] * FcL->wData[i][k] + FcL->y[i];
+		}
+		
+		FcL->y[i] = FcL->y[i]>>10;
+		FcL->y[i] = activation_relu(FcL->y[i], FcL->basicData[i]);
 		//printf("%f\n ", FcL->y[i]);
 	}
 	//printf("\n\n");
@@ -5182,468 +1196,27 @@ void* output(int* inputData, char* filename, int inputNum, int outputNum, char* 
 	outL->basicData = (int*)calloc(outputNum, sizeof(int));
 	outL->outputdata = (int*)calloc(outputNum, sizeof(int));
 
-	//read_file_fc(filename, outputNum, inputNum, outL);
-outL->wData[0][0]=-179;
-outL->wData[0][1]=-154;
-outL->wData[0][2]=-192;
-outL->wData[0][3]=34;
-outL->wData[0][4]=131;
-outL->wData[0][5]=-628;
-outL->wData[0][6]=207;
-outL->wData[0][7]=-28;
-outL->wData[0][8]=-237;
-outL->wData[0][9]=73;
-outL->wData[0][10]=113;
-outL->wData[0][11]=83;
-outL->wData[0][12]=-133;
-outL->wData[0][13]=-543;
-outL->wData[0][14]=81;
-outL->wData[0][15]=-12;
-outL->wData[0][16]=99;
-outL->wData[0][17]=116;
-outL->wData[0][18]=-350;
-outL->wData[0][19]=-86;
-outL->wData[0][20]=-120;
-outL->wData[0][21]=-458;
-outL->wData[0][22]=96;
-outL->wData[0][23]=-720;
-outL->wData[0][24]=-104;
-outL->wData[0][25]=-437;
-outL->wData[0][26]=157;
-outL->wData[0][27]=3;
-outL->wData[0][28]=-180;
-outL->wData[0][29]=-341;
-outL->wData[0][30]=82;
-outL->wData[0][31]=-567;
-outL->wData[0][32]=259;
-outL->wData[0][33]=-340;
-outL->wData[0][34]=301;
-outL->wData[0][35]=226;
-outL->wData[0][36]=-108;
-outL->wData[0][37]=-6;
-outL->wData[0][38]=38;
-outL->wData[0][39]=199;
-outL->wData[0][40]=88;
-outL->wData[0][41]=333;
-outL->wData[0][42]=-395;
-outL->wData[0][43]=193;
-outL->wData[0][44]=258;
-outL->wData[1][0]=-404;
-outL->wData[1][1]=70;
-outL->wData[1][2]=59;
-outL->wData[1][3]=-96;
-outL->wData[1][4]=128;
-outL->wData[1][5]=-395;
-outL->wData[1][6]=-292;
-outL->wData[1][7]=27;
-outL->wData[1][8]=-145;
-outL->wData[1][9]=-280;
-outL->wData[1][10]=317;
-outL->wData[1][11]=-32;
-outL->wData[1][12]=-814;
-outL->wData[1][13]=2;
-outL->wData[1][14]=-153;
-outL->wData[1][15]=-399;
-outL->wData[1][16]=243;
-outL->wData[1][17]=175;
-outL->wData[1][18]=262;
-outL->wData[1][19]=287;
-outL->wData[1][20]=73;
-outL->wData[1][21]=-652;
-outL->wData[1][22]=-259;
-outL->wData[1][23]=-170;
-outL->wData[1][24]=-352;
-outL->wData[1][25]=375;
-outL->wData[1][26]=130;
-outL->wData[1][27]=-175;
-outL->wData[1][28]=485;
-outL->wData[1][29]=-135;
-outL->wData[1][30]=119;
-outL->wData[1][31]=-680;
-outL->wData[1][32]=40;
-outL->wData[1][33]=96;
-outL->wData[1][34]=-113;
-outL->wData[1][35]=102;
-outL->wData[1][36]=-186;
-outL->wData[1][37]=-112;
-outL->wData[1][38]=-311;
-outL->wData[1][39]=16;
-outL->wData[1][40]=-87;
-outL->wData[1][41]=224;
-outL->wData[1][42]=51;
-outL->wData[1][43]=-249;
-outL->wData[1][44]=53;
-outL->wData[2][0]=6;
-outL->wData[2][1]=-88;
-outL->wData[2][2]=220;
-outL->wData[2][3]=-513;
-outL->wData[2][4]=168;
-outL->wData[2][5]=9;
-outL->wData[2][6]=193;
-outL->wData[2][7]=25;
-outL->wData[2][8]=-238;
-outL->wData[2][9]=-226;
-outL->wData[2][10]=308;
-outL->wData[2][11]=-303;
-outL->wData[2][12]=-363;
-outL->wData[2][13]=49;
-outL->wData[2][14]=293;
-outL->wData[2][15]=-110;
-outL->wData[2][16]=-250;
-outL->wData[2][17]=-78;
-outL->wData[2][18]=42;
-outL->wData[2][19]=227;
-outL->wData[2][20]=299;
-outL->wData[2][21]=-203;
-outL->wData[2][22]=-202;
-outL->wData[2][23]=-396;
-outL->wData[2][24]=209;
-outL->wData[2][25]=11;
-outL->wData[2][26]=-714;
-outL->wData[2][27]=98;
-outL->wData[2][28]=-370;
-outL->wData[2][29]=-221;
-outL->wData[2][30]=150;
-outL->wData[2][31]=-341;
-outL->wData[2][32]=-10;
-outL->wData[2][33]=104;
-outL->wData[2][34]=-234;
-outL->wData[2][35]=191;
-outL->wData[2][36]=-768;
-outL->wData[2][37]=-8;
-outL->wData[2][38]=111;
-outL->wData[2][39]=51;
-outL->wData[2][40]=244;
-outL->wData[2][41]=-137;
-outL->wData[2][42]=-483;
-outL->wData[2][43]=-740;
-outL->wData[2][44]=274;
-outL->wData[3][0]=-125;
-outL->wData[3][1]=-517;
-outL->wData[3][2]=-65;
-outL->wData[3][3]=-722;
-outL->wData[3][4]=-235;
-outL->wData[3][5]=174;
-outL->wData[3][6]=-128;
-outL->wData[3][7]=-114;
-outL->wData[3][8]=173;
-outL->wData[3][9]=-840;
-outL->wData[3][10]=190;
-outL->wData[3][11]=179;
-outL->wData[3][12]=134;
-outL->wData[3][13]=-73;
-outL->wData[3][14]=60;
-outL->wData[3][15]=152;
-outL->wData[3][16]=122;
-outL->wData[3][17]=-298;
-outL->wData[3][18]=225;
-outL->wData[3][19]=-60;
-outL->wData[3][20]=-195;
-outL->wData[3][21]=76;
-outL->wData[3][22]=156;
-outL->wData[3][23]=68;
-outL->wData[3][24]=-155;
-outL->wData[3][25]=-223;
-outL->wData[3][26]=38;
-outL->wData[3][27]=108;
-outL->wData[3][28]=-167;
-outL->wData[3][29]=118;
-outL->wData[3][30]=45;
-outL->wData[3][31]=-514;
-outL->wData[3][32]=148;
-outL->wData[3][33]=226;
-outL->wData[3][34]=-621;
-outL->wData[3][35]=-129;
-outL->wData[3][36]=-152;
-outL->wData[3][37]=-82;
-outL->wData[3][38]=86;
-outL->wData[3][39]=175;
-outL->wData[3][40]=-194;
-outL->wData[3][41]=-90;
-outL->wData[3][42]=-404;
-outL->wData[3][43]=-61;
-outL->wData[3][44]=296;
-outL->wData[4][0]=-471;
-outL->wData[4][1]=-246;
-outL->wData[4][2]=-131;
-outL->wData[4][3]=-213;
-outL->wData[4][4]=-688;
-outL->wData[4][5]=-339;
-outL->wData[4][6]=-300;
-outL->wData[4][7]=-463;
-outL->wData[4][8]=-252;
-outL->wData[4][9]=-107;
-outL->wData[4][10]=176;
-outL->wData[4][11]=178;
-outL->wData[4][12]=-783;
-outL->wData[4][13]=425;
-outL->wData[4][14]=-231;
-outL->wData[4][15]=-233;
-outL->wData[4][16]=-39;
-outL->wData[4][17]=-175;
-outL->wData[4][18]=-293;
-outL->wData[4][19]=52;
-outL->wData[4][20]=81;
-outL->wData[4][21]=-41;
-outL->wData[4][22]=-181;
-outL->wData[4][23]=361;
-outL->wData[4][24]=216;
-outL->wData[4][25]=-289;
-outL->wData[4][26]=-10;
-outL->wData[4][27]=-386;
-outL->wData[4][28]=-38;
-outL->wData[4][29]=-88;
-outL->wData[4][30]=95;
-outL->wData[4][31]=-151;
-outL->wData[4][32]=-318;
-outL->wData[4][33]=-303;
-outL->wData[4][34]=-66;
-outL->wData[4][35]=294;
-outL->wData[4][36]=250;
-outL->wData[4][37]=22;
-outL->wData[4][38]=215;
-outL->wData[4][39]=123;
-outL->wData[4][40]=106;
-outL->wData[4][41]=-736;
-outL->wData[4][42]=357;
-outL->wData[4][43]=-38;
-outL->wData[4][44]=89;
-outL->wData[5][0]=151;
-outL->wData[5][1]=83;
-outL->wData[5][2]=-301;
-outL->wData[5][3]=-36;
-outL->wData[5][4]=24;
-outL->wData[5][5]=200;
-outL->wData[5][6]=37;
-outL->wData[5][7]=-150;
-outL->wData[5][8]=-176;
-outL->wData[5][9]=-506;
-outL->wData[5][10]=-148;
-outL->wData[5][11]=-32;
-outL->wData[5][12]=-170;
-outL->wData[5][13]=-37;
-outL->wData[5][14]=-987;
-outL->wData[5][15]=182;
-outL->wData[5][16]=-108;
-outL->wData[5][17]=38;
-outL->wData[5][18]=-122;
-outL->wData[5][19]=-324;
-outL->wData[5][20]=186;
-outL->wData[5][21]=-152;
-outL->wData[5][22]=17;
-outL->wData[5][23]=-172;
-outL->wData[5][24]=-82;
-outL->wData[5][25]=179;
-outL->wData[5][26]=122;
-outL->wData[5][27]=-102;
-outL->wData[5][28]=74;
-outL->wData[5][29]=123;
-outL->wData[5][30]=289;
-outL->wData[5][31]=8;
-outL->wData[5][32]=-98;
-outL->wData[5][33]=209;
-outL->wData[5][34]=-632;
-outL->wData[5][35]=33;
-outL->wData[5][36]=-829;
-outL->wData[5][37]=-256;
-outL->wData[5][38]=251;
-outL->wData[5][39]=-746;
-outL->wData[5][40]=-10;
-outL->wData[5][41]=-138;
-outL->wData[5][42]=-831;
-outL->wData[5][43]=238;
-outL->wData[5][44]=-215;
-outL->wData[6][0]=86;
-outL->wData[6][1]=217;
-outL->wData[6][2]=122;
-outL->wData[6][3]=-189;
-outL->wData[6][4]=-438;
-outL->wData[6][5]=115;
-outL->wData[6][6]=51;
-outL->wData[6][7]=-239;
-outL->wData[6][8]=168;
-outL->wData[6][9]=92;
-outL->wData[6][10]=64;
-outL->wData[6][11]=265;
-outL->wData[6][12]=-940;
-outL->wData[6][13]=-92;
-outL->wData[6][14]=-915;
-outL->wData[6][15]=207;
-outL->wData[6][16]=-6;
-outL->wData[6][17]=-253;
-outL->wData[6][18]=-190;
-outL->wData[6][19]=233;
-outL->wData[6][20]=263;
-outL->wData[6][21]=-966;
-outL->wData[6][22]=245;
-outL->wData[6][23]=165;
-outL->wData[6][24]=-242;
-outL->wData[6][25]=102;
-outL->wData[6][26]=-74;
-outL->wData[6][27]=53;
-outL->wData[6][28]=-195;
-outL->wData[6][29]=-153;
-outL->wData[6][30]=40;
-outL->wData[6][31]=77;
-outL->wData[6][32]=30;
-outL->wData[6][33]=-799;
-outL->wData[6][34]=128;
-outL->wData[6][35]=-158;
-outL->wData[6][36]=60;
-outL->wData[6][37]=-239;
-outL->wData[6][38]=175;
-outL->wData[6][39]=-120;
-outL->wData[6][40]=154;
-outL->wData[6][41]=-100;
-outL->wData[6][42]=-483;
-outL->wData[6][43]=127;
-outL->wData[6][44]=-235;
-outL->wData[7][0]=-323;
-outL->wData[7][1]=354;
-outL->wData[7][2]=106;
-outL->wData[7][3]=-670;
-outL->wData[7][4]=165;
-outL->wData[7][5]=372;
-outL->wData[7][6]=150;
-outL->wData[7][7]=-159;
-outL->wData[7][8]=147;
-outL->wData[7][9]=-938;
-outL->wData[7][10]=-383;
-outL->wData[7][11]=254;
-outL->wData[7][12]=-581;
-outL->wData[7][13]=-96;
-outL->wData[7][14]=-14;
-outL->wData[7][15]=126;
-outL->wData[7][16]=92;
-outL->wData[7][17]=142;
-outL->wData[7][18]=-11;
-outL->wData[7][19]=55;
-outL->wData[7][20]=-385;
-outL->wData[7][21]=175;
-outL->wData[7][22]=127;
-outL->wData[7][23]=-301;
-outL->wData[7][24]=71;
-outL->wData[7][25]=8;
-outL->wData[7][26]=-179;
-outL->wData[7][27]=-757;
-outL->wData[7][28]=168;
-outL->wData[7][29]=41;
-outL->wData[7][30]=-10;
-outL->wData[7][31]=112;
-outL->wData[7][32]=-259;
-outL->wData[7][33]=180;
-outL->wData[7][34]=72;
-outL->wData[7][35]=-109;
-outL->wData[7][36]=91;
-outL->wData[7][37]=-98;
-outL->wData[7][38]=-396;
-outL->wData[7][39]=-251;
-outL->wData[7][40]=114;
-outL->wData[7][41]=-364;
-outL->wData[7][42]=45;
-outL->wData[7][43]=-10;
-outL->wData[7][44]=-16;
-outL->wData[8][0]=12;
-outL->wData[8][1]=80;
-outL->wData[8][2]=-254;
-outL->wData[8][3]=-26;
-outL->wData[8][4]=-365;
-outL->wData[8][5]=-105;
-outL->wData[8][6]=-122;
-outL->wData[8][7]=343;
-outL->wData[8][8]=219;
-outL->wData[8][9]=-449;
-outL->wData[8][10]=139;
-outL->wData[8][11]=-232;
-outL->wData[8][12]=-488;
-outL->wData[8][13]=-406;
-outL->wData[8][14]=-161;
-outL->wData[8][15]=80;
-outL->wData[8][16]=312;
-outL->wData[8][17]=-161;
-outL->wData[8][18]=-26;
-outL->wData[8][19]=58;
-outL->wData[8][20]=353;
-outL->wData[8][21]=139;
-outL->wData[8][22]=242;
-outL->wData[8][23]=-125;
-outL->wData[8][24]=142;
-outL->wData[8][25]=-663;
-outL->wData[8][26]=117;
-outL->wData[8][27]=-59;
-outL->wData[8][28]=146;
-outL->wData[8][29]=308;
-outL->wData[8][30]=52;
-outL->wData[8][31]=-343;
-outL->wData[8][32]=-149;
-outL->wData[8][33]=-169;
-outL->wData[8][34]=183;
-outL->wData[8][35]=-25;
-outL->wData[8][36]=-941;
-outL->wData[8][37]=161;
-outL->wData[8][38]=-57;
-outL->wData[8][39]=157;
-outL->wData[8][40]=175;
-outL->wData[8][41]=-103;
-outL->wData[8][42]=-476;
-outL->wData[8][43]=-609;
-outL->wData[8][44]=230;
-outL->wData[9][0]=-178;
-outL->wData[9][1]=249;
-outL->wData[9][2]=-759;
-outL->wData[9][3]=-273;
-outL->wData[9][4]=170;
-outL->wData[9][5]=-798;
-outL->wData[9][6]=-764;
-outL->wData[9][7]=32;
-outL->wData[9][8]=-15;
-outL->wData[9][9]=-298;
-outL->wData[9][10]=265;
-outL->wData[9][11]=-131;
-outL->wData[9][12]=-830;
-outL->wData[9][13]=-665;
-outL->wData[9][14]=170;
-outL->wData[9][15]=-93;
-outL->wData[9][16]=-43;
-outL->wData[9][17]=84;
-outL->wData[9][18]=-422;
-outL->wData[9][19]=95;
-outL->wData[9][20]=242;
-outL->wData[9][21]=189;
-outL->wData[9][22]=-56;
-outL->wData[9][23]=162;
-outL->wData[9][24]=-65;
-outL->wData[9][25]=-519;
-outL->wData[9][26]=40;
-outL->wData[9][27]=125;
-outL->wData[9][28]=-45;
-outL->wData[9][29]=-72;
-outL->wData[9][30]=-533;
-outL->wData[9][31]=-498;
-outL->wData[9][32]=55;
-outL->wData[9][33]=5;
-outL->wData[9][34]=-277;
-outL->wData[9][35]=249;
-outL->wData[9][36]=200;
-outL->wData[9][37]=148;
-outL->wData[9][38]=106;
-outL->wData[9][39]=149;
-outL->wData[9][40]=-320;
-outL->wData[9][41]=-277;
-outL->wData[9][42]=-368;
-outL->wData[9][43]=122;
-outL->wData[9][44]=-134;
-outL->basicData[0]=122;
-outL->basicData[1]=183;
-outL->basicData[2]=192;
-outL->basicData[3]=135;
-outL->basicData[4]=39;
-outL->basicData[5]=214;
-outL->basicData[6]=140;
-outL->basicData[7]=236;
-outL->basicData[8]=179;
-outL->basicData[9]=131;
+int outL_wdata[10][84]={{44,-103,-72,-120,160,-43,225,228,257,-19,-203,84,-166,-98,130,139,-340,-107,73,204,-302,321,240,197,39,-211,256,158,289,-440,110,-272,82,53,665,-232,-6,-214,188,-292,45,-159,195,-240,53,-200,7,162,19,-44,334,-369,-291,-299,-156,-92,277,-85,217,-499,222,409,65,118,-150,444,-478,314,-171,201,283,128,129,38,-188,247,-291,325,-203,147,-56,101,415,365},\
+{-109,153,72,-247,176,129,-115,-13,-351,410,202,-362,166,116,-48,355,-165,19,-273,156,-156,82,-69,381,229,68,117,18,199,-344,-115,-227,290,145,-108,264,150,82,-27,33,346,-257,28,44,209,220,-275,-47,-309,-138,-257,415,-200,157,-243,-145,-235,455,226,-244,171,-464,-199,416,-415,-61,-207,-222,-71,120,-405,1,-7,-203,-363,0,-127,-229,391,363,-28,-161,-290,-285},\
+{248,-230,35,112,-186,342,296,-240,-133,-254,-295,281,-189,171,-90,258,-28,308,-204,-418,-74,-7,36,168,-157,147,165,250,279,335,-101,254,-559,376,305,-81,-266,308,-67,-401,-239,90,-94,81,399,-195,60,-249,419,-57,-62,126,4,38,-357,-313,416,-177,-135,536,-136,-338,262,60,-48,488,144,-28,187,152,322,-59,-252,-83,-121,-564,-221,316,319,28,394,-197,292,61},\
+{68,-221,59,167,-209,-216,356,-357,-227,-413,410,-6,-72,249,-358,-342,169,-91,-238,467,246,136,-57,-53,-320,248,-149,-119,-295,193,257,-158,-27,153,105,-114,-170,262,-158,-296,-185,288,73,60,-53,295,176,141,-222,-239,-95,-23,259,59,227,-71,43,195,180,161,-251,70,48,459,521,141,-58,-143,-33,177,-291,-196,111,189,298,223,-348,-213,-193,-54,-10,234,209,-277},\
+{-80,253,-414,-171,45,287,-66,-294,-143,-193,-85,146,169,231,-305,-249,301,306,-42,170,470,246,72,203,-115,-142,326,-115,355,144,-381,-110,-325,-83,-491,-138,58,-237,-157,17,-213,-190,253,-211,-274,-536,-47,26,254,-196,-277,-191,-142,222,189,30,-270,205,-164,658,428,186,350,347,-91,511,284,-244,370,183,250,-38,447,267,69,-35,33,83,-329,242,-232,-3,-205,104},\
+{-90,538,316,-234,-207,-435,12,14,428,253,-229,-211,-294,-371,338,79,-143,-340,-37,-332,-31,-266,91,-167,56,-134,203,-76,122,427,90,85,425,-138,65,-351,-101,-56,99,435,-388,-84,-143,208,-81,157,-499,-1,-149,-38,297,-221,-7,127,-79,-108,-278,-143,-166,-106,-244,-49,-129,-340,-83,-291,462,-277,140,206,-286,-45,-192,2,400,-150,-179,36,-241,153,238,75,365,476},\
+{-371,-151,-122,376,-333,205,127,141,436,284,422,-167,138,-20,312,270,156,145,126,-75,475,-16,-272,-255,92,375,-128,106,478,-151,208,247,-51,-241,579,-59,-62,-348,243,-77,-168,-112,-278,205,-266,-153,394,66,305,-356,-418,292,-117,-107,-29,-143,-267,-173,153,245,85,313,372,-39,-284,558,-268,-134,345,-219,295,-257,-137,63,-404,-59,138,-257,-77,-234,58,43,249,-139},\
+{117,110,282,413,260,-377,-211,167,401,40,308,89,307,118,-249,116,-224,-251,587,-125,105,-241,228,144,315,36,300,-157,-566,-2,-240,231,168,168,-322,-2,-32,383,-19,229,72,233,52,275,72,-96,-376,-181,123,-81,-87,120,-213,25,-58,80,-6,97,-241,-10,-89,-248,-106,-400,-94,-211,-158,8,-60,-178,4,294,139,137,161,-12,-178,347,-321,112,138,79,-332,338},\
+{322,-287,92,-109,29,-35,366,-17,85,230,-358,363,316,-157,84,125,107,107,-279,114,-379,-289,80,-148,121,191,-13,-258,160,210,-270,243,-100,-88,-23,25,-298,61,-163,-248,61,502,195,-175,-204,186,-353,211,430,371,338,-172,-155,282,146,564,-27,-458,-351,-147,-60,10,15,136,360,-784,-18,241,431,-142,262,-268,221,168,-235,33,422,-121,-48,195,189,-281,-150,-30},\
+{221,-23,382,234,-94,189,-33,230,36,-247,79,238,-29,346,45,-205,-26,-285,533,-320,-300,-2,-82,-65,219,190,-124,11,-433,-54,-275,-125,-78,23,-231,-153,509,-164,-133,317,201,41,-284,399,122,81,14,-216,-243,174,178,-83,-127,96,255,247,251,-172,160,-180,-133,-200,13,9,-368,-48,-96,238,-316,-167,-343,-148,-233,-275,391,40,20,-298,123,-26,-18,-201,-270,-20}};
 
+int outL_basicdata[10] = {-84,-32,140,243,-471,144,481,-26,-162,-170};
+	for(i=0;i<outputNum; i++){
+		for(int j=0; j<inputNum;j++){
+			outL->wData[i][j] = outL_wdata[i][j]; 
+		}
+	}
+
+	for(i=0;i<outputNum;i++){
+		outL->basicData[i] = outL_basicdata[i];
+	}
 
 	for (i = 0; i < outputNum; i++)
 	{
@@ -5652,9 +1225,10 @@ outL->basicData[9]=131;
 			outL->outputdata[i] += inputData[k] * outL->wData[i][k];
 		}
 		//printf("%f\n ", cnn->fc160_1->y[i]);
-		outL->outputdata[i] = activation_relu(outL->outputdata[i], outL->basicData[i]);
+		// outL->outputdata[i] = activation_relu(outL->outputdata[i], outL->basicData[i]);
 		//printf("%f\n ",outL->outputdata[i]);
-		printf("output %d\n", outL->outputdata[i]);
+		outL->outputdata[i] = outL->outputdata[i]>>10;
+		// printf("output %d\n", outL->outputdata[i]);
 	}
 
 	for (i = (outputNum - 1); i != (-1); i--)
@@ -5666,94 +1240,28 @@ outL->basicData[9]=131;
 }
 
 
-void conv23(int model,int *addr){
-	//printf("conv23 addr is %d\n",addr);
-	int size,result;
-	if(model==0){
-		size = 16;
-	}
-	else{
-		size = 65552;
-	}
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 1, 0, %[con_o], %[con_i1], %[con_i2]"
-		:[con_o] "=r"(result)
-		:[con_i1]"r"(addr),[con_i2]"r"(size)
-		);
-}
-
-void wb23(int *addr){
-	int n=0;
-	int result;
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 1, 1, %[out], %[addr], %[null]"
-		:[out] "=r"(result)
-		:[addr]"r"(addr),[null]"r"(n)
-		:"memory"
-	);
-}
-
-void w_wb(int rank, int value){
-	int null;
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 4, 0, %[null], %[rank], %[value]"
-		:[null] "=r"(null)
-		:[rank]"r"(rank),[value]"r"(value)
-		);
-}
-
-void max_pooling(){
-	int null;
-	int in1=0;
-	int in2=0;
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 2, 0, %[null], %[in1], %[in2]"
-		:[null] "=r"(null)
-		:[in1]"r"(in1),[in2]"r"(in2)
-		);
-}
-
-void mp_wb(int *addr){
-	int null;
-	int in2=0;
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 2, 1, %[null], %[addr], %[in2]"
-		:[null] "=r"(null)
-		:[addr]"r"(addr),[in2]"r"(in2)
-		);
-}
-void mp_ri(int *addr){
-	int null;
-	int in2 = 0;
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 2, 2, %[null], %[addr], %[in2]"
-		:[null] "=r"(null)
-		:[addr]"r"(addr),[in2]"r"(in2)
-		);
-}
-
-void relu(int bias){
-	int null;
-	int in2 = 0;
-	__asm__ __volatile__(
-		"addi zero,zero,0\n"
-		".insn r 0x77, 3, 0, %[null], %[in1], %[in2]"
-		:[null] "=r"(null)
-		:[in1]"r"(bias),[in2]"r"(in2)
-		);
-}
-
-
 int main(int argc, char* argv[])
 {
 	int cycle_s;
 	int cycle_e;
+
+	int conv1_st;
+	int conv1_et;
+	int maxpool1_st;
+	int maxpool1_et;
+	int conv2_st;
+	int conv2_et;
+	int maxpool2_st;
+	int maxpool2_et;
+	int flatten_st;
+	int flatten_et;
+	int fc1_st;
+	int fc1_et;
+	int fc2_st;
+	int fc2_et;
+	int out_st;
+	int out_et;
+
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(cycle_s)
@@ -5766,35 +1274,122 @@ int main(int argc, char* argv[])
 	int* y1;
 	
 	filename = "";
-	inputData = read_image(filename);
-	y=input(inputData,filename,28,28,3,1,6);//kernal_size=5
-
-// y=pool(y,26,26, MaxPool, 2,6,6,2);//kernal_size=3
-
-	y=conv(y,filename,13,13,3,6,9);//kernal_size=3
+	filename1 = "";
 	
-// y=pool(y,11,11, MaxPool,2,9,9,2);//kernal_size=3
+	inputData = read_image_padding1(filename);
+
+	//////conv1/////////
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(conv1_st)
+	);
+	y=input(inputData,filename,30,30,3,1,6);
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(conv1_et)
+	);
+
+	//////max pool 1///////
+
 	
-	y=pool(y,6,6, MaxPool,2,9,9,2);//kernal_size=3
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(maxpool1_st)
+	);
+	y=pool(y,28,28, MaxPool, 2,6,6,2);//kernal_size=3
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(maxpool1_et)
+	);
 
-	y1 = flatten(y, 3, 3, 9, 81);//kernal_size=3
-	y1 = fc(y1,filename,81,45);
+	///////conv2////////
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(conv2_st)
+	);
+	y=conv(y,filename,14,14,3,6,16);//kernal_size=3
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(conv2_et)
+	);
 
-	output(y1, filename, 45, 10,filename1);
+	//////max pool 2///////
+
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(maxpool2_st)
+	);
+	y=pool(y,12,12, MaxPool,2,16,16,2);//kernal_size=3
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(maxpool2_et)
+	);
+
+
+	//////flatten///////
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(flatten_st)
+	);
+	y1 = flatten(y, 6, 6, 16, 576);//kernal_size=3
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(flatten_et)
+	);
+
+	///////fc1//////////
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(fc1_st)
+	);
+	y1 = fc1(y1,filename,576,120);
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(fc1_et)
+	);
+
+	///////fc2/////////
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(fc2_st)
+	);
+	y1 = fc2(y1,filename,120,84);
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(fc2_et)
+	);
+
+	///////output/////
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(out_st)
+	);
+	output(y1,filename,84,10,filename1);
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(out_et)
+	);
+	
+	
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(cycle_e)
 	);
+
+	// printf("conv1 time=%d\n",conv1_et-conv1_st);
+	// printf("maxpool1 time=%d\n",maxpool1_et-maxpool1_st);
+	// printf("conv2 time=%d\n",conv2_et-conv2_st);
+	// printf("maxpool2 time=%d\n",maxpool2_et-maxpool2_st);
+	// printf("flatten time=%d\n",flatten_et-flatten_st);
+	// printf("fc1 time=%d\n",fc1_et-fc1_st);
+	// printf("fc2 time=%d\n",fc2_et-fc2_st);
+	// printf("output time=%d\n",out_et-out_st);
+
 	printf("cycle=%d\n",cycle_e-cycle_s);
+
+
+	//end_all = clock();
+	//fprintf(stderr, "\n------------------------------------------\ntotal time          =  %f seconds\n------------------------------------------\n", (double)(end_all - start_all) / CLOCKS_PER_SEC);
+
 	return 0;
 }
-
-// LeNet-5 use c achieve 卷积神经网络的C语言实现
-
-
-// how to use python下 1.在python环境下训练模型，并保存模型（python->model_train.py） 
-// 2.模型预测，获取模型预测的结果（python->model_predict.py） 
-// 3.获取模型各层权重参数（python->get_model_weight） 
-// 4.将图片转为.bin格式（python->image_to_array.py） 
-// 5.获取模型各层结果（get_layers_results.py） 
-// C下： 1.根据需要修改网络结构，以及数据存放位置。 2.直接运行就可以了
