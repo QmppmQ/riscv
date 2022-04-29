@@ -1,7 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <time.h>
+//#include "cnn.h"
 //mat.h
 #define MaxPool 1
 #pragma once
@@ -17,23 +19,24 @@ typedef struct Mat2DSize {
 	int r; // h
 }nSize;
 
-// add
-void addmat(int** res, int** mat1, nSize resize, int** mat2, nSize matSize2);
 
-// correlation
-int** correlation(int** map, nSize kernel_size, int** inputData, nSize inSize, int type);
+int** transpose_matrix(int **input, int c, int r);
 
-// conv
-int** cov(int** map, nSize kernel_size, int** inputData, nSize inSize, int type);
+int* conv_noreshape(int **in_addr,int **wt,int m);
 
-// 
-int** matEdgeExpand(int** mat, nSize matSize, int addc, int addr);
+void MaxPooling_noreshape(int** output,int* input,int inputSize,int bias);
 
-// 
-int** matEdgeShrink(int** mat, nSize matSize, int shrinkc, int shrinkr);
+void addmat_1d(int* res, int* mat1, int* mat2, int m);
 
-//
-int** transpose_matrix(int** input, int c, int r);
+void conv23(int size,int *addr);
+void wb23(int *addr);
+void w_wb(int rank, int value);
+void max_pooling();
+void mp_wb(int *addr);
+void mp_ri(int *addr);
+void relu(int bias);
+
+
 
 #endif
 
@@ -85,11 +88,13 @@ typedef struct out_layer {
 
 
 int activation_relu(int input, int bas);
+int activation_no_relu(int input, int bas);
 void MaxPooling(int** output, nSize outputSize, int** input, nSize inputSize, int kernel_size, int stride);
-//void read_file_fc(char* filename, int a, int b, FcLayer* fc);
-//void read_file_out(char* filename, int a, int b, OutLayer* fc);
-//void read_file_conv(char* filename, int a, int b, int c, int d, CovLayer* conv);
+void read_file_fc(char* filename, int a, int b, FcLayer* fc);
+void read_file_out(char* filename, int a, int b, OutLayer* fc);
+void read_file_conv(char* filename, int a, int b, int c, int d, CovLayer* conv);
 int** read_image(char* filename);
+int** read_image_padding1(char* filename);
 int*** input(int** inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels);
 int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels);
 int*** pool(int*** inputData, int inputWidth, int inputHeight, int poolType, int kernel_size, int inChannels, int outChannels, int stride);
@@ -98,281 +103,199 @@ int* fc(int* inputData, char* filename, int inputNum, int outputNum);
 void* output(int* inputData, char* filename, int inputNum, int outputNum, char* filename1);
 //mat.c
 //将乘结果累加
-void addmat(int** res, int** mat1, nSize matSize1, int** mat2, nSize matSize2)
+void addmat_1d(int* res, int* mat1, int* mat2, int m)
 {
-	int i, j;
-	int count = 0;
-	if (matSize1.c != matSize2.c || matSize1.r != matSize2.r)
+	for (int i = 0; i < m; i++)
 	{
-		//printf("ERROR: Size is not same!");
+			res[i] = mat1[i] + mat2[i];
 	}
-
-
-
-	for (i = 0; i < matSize1.c; i++)
-	{
-		for (j = 0; j < matSize1.r; j++)
-		{
-			res[i][j] = mat1[i][j] + mat2[i][j];
-			//count++;
-			//printf("res[i][j]=%f		", res[i][j]);
-		}
-		//printf("\n");
-	}
-	//printf("\n");
 }
 
-/*
-full:
-5 * 5 conv 3 * 3 = (5 + 3 - 1) * (5 + 3 - 1)
-inSize + (kernel_size - 1)
-
-same:
-5 * 5 conv 3 * 3 = 5 * 5
-inSize
-
-valid:
-5 * 5 conv 3 * 3 = (5 - 3 + 1) * (5 - 3 + 1)
-inSize - (kernel_size - 1)
-
-*/
-//选择不同的补0操作
-int** correlation(int** map, nSize kernel_size, int** inputData, nSize inSize, int type)
-{
-	int i, j, c, r;
-	int halfkernel_sizew;
-	int halfkernel_sizeh;
-
-	if (kernel_size.r % 2 == 0 && kernel_size.c % 2 == 0)
-	{ // even
-		halfkernel_sizew = (kernel_size.c) / 2;
-		halfkernel_sizeh = (kernel_size.r) / 2;
-	}
-	else
-	{ // odd
-		halfkernel_sizew = (kernel_size.c - 1) / 2;
-		halfkernel_sizeh = (kernel_size.r - 1) / 2;
-	}
-
-	// full -> inSize+(kernel_size-1)
-	// int outSizeW = inSize.c + (kernel_size.c - 1);
-	// int outSizeH = inSize.r + (kernel_size.r - 1);
-	// valid -> inSize-(kernel_size-1)
-	int outSizeW = inSize.c - (kernel_size.c - 1);
-	int outSizeH = inSize.r - (kernel_size.r - 1);
-
-	int** outputData = (int**)malloc(outSizeH * sizeof(int*));
-	for (i = 0; i < outSizeH; i++)
-	{
-		outputData[i] = (int*)calloc(outSizeW, sizeof(int));
-	}
-
-	// int** exInputData = matEdgeExpand(inputData, inSize, kernel_size.c - 1, kernel_size.r - 1);
-	/*for (r = 0; r < kernel_size.r; r++)
-	{
-		for (c = 0; c < kernel_size.c; c++)
-		{
-			printf("		map[r][c] =%f", map[r][c]);
-
+int* conv_noreshape(int **in_addr,int **wt,int m) {
+	int w = m;
+	int **b;
+	for(int i=0; i<3; i++){
+		for(int j=0; j<3; j++){
+			w_wb(3*i+j+1,wt[i][j]);
 		}
 	}
-	for (j = 0; j < r + 2 * 4; j++)
-	{
-		for (i = 0; i < c + 2 * 4; i++)
-		{
-			printf("		exInputData[i][j]=%f", exInputData[i][j]);
+	int balance_num;
+	if(m%2==0){
+		;
+	}
+	else{
+		b = (int**)malloc((m+1) * sizeof(int*));
+		for (int i = 0; i < m+1; i++){
+			b[i] = (int*)malloc((m+1) * sizeof(int));
 		}
-	}*/
-	int count = 0;
-	for (j = 0; j < outSizeH; j++)
-	{
-		for (i = 0; i < outSizeW; i++)
-		{
-			for (r = 0; r < kernel_size.r; r++)
-			{
-				for (c = 0; c < kernel_size.c; c++)
-				{
-					outputData[j][i] = outputData[j][i] + map[r][c] * inputData[j + r][i + c];
-					// outputData[j][i] = outputData[j][i] + map[r][c] * exInputData[j + r][i + c];
-					//printf("outputData= %f		 ", outputData);
-					//count++;
-				}
+		for(int i=0; i<m; i++){
+			for(int j=0; j<m; j++){
+				b[i][j] = in_addr[i][j];
+			}
+			// if(i>1){
+			// 	balance_num = -(wt[0][0]*b[i-2][m-2] + wt[0][1]*b[i-2][m-1] + \
+			// 	wt[0][2]*b[i-2][m] + wt[1][0]*b[i-1][m-2] + wt[1][1]*b[i-1][m-1] +\
+			// 	wt[1][2]*b[i-1][m] + wt[2][0]*b[i][m-2] + wt[2][1]*b[i][m-1])-1000000;
+			// 	b[i][m] = balance_num/wt[2][2];
+			// }
+			// else{
+				b[i][m] = 0;
+			// }
+
+		}
+		for(int k=0; k<m+1; k++){
+			// if(k>1){
+			// 	balance_num = -(wt[0][0]*b[m-2][k-2] + wt[0][1]*b[m-2][k-1] + \
+			// 	wt[0][2]*b[m-2][k] + wt[1][0]*b[m-1][k-2] + wt[1][1]*b[m-1][k-1] +\
+			// 	wt[1][2]*b[m-1][k] + wt[2][0]*b[m][k-2] + wt[2][1]*b[m][k-1])-1000000;
+			// 	b[m][k]=balance_num/wt[2][2];
+			// }
+			// else{
+				b[m][k] = 0;
+			// }
+		}
+	}
+
+	if(m%2==0){}
+	else{
+		w = m+1;
+	}
+
+	int row_step = (w - 4) / 2 +1 ;
+	int col_step = row_step;
+
+	int reshape_st;
+	int reshape_et;
+
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(reshape_st)
+	);
+	int* a = (int*)malloc(16*row_step*col_step * sizeof(int));
+	int x;
+	if(m%2==0){
+		for(int i=0; i<2*col_step; i+=2){
+			for(int j=0;j<2*row_step;j+=2){
+				x = 8*(j+row_step*i);
+				a[x] = in_addr[i][j];
+				a[1+x] = in_addr[i][j+1];
+				a[2+x] = in_addr[i][j+2];
+				a[3+x] = in_addr[i][j+3];
+				a[4+x] = in_addr[i+1][j];
+				a[5+x] = in_addr[i+1][j+1];
+				a[6+x] = in_addr[i+1][j+2];
+				a[7+x] = in_addr[i+1][j+3];
+				a[8+x] = in_addr[i+2][j];
+				a[9+x] = in_addr[i+2][j+1];
+				a[10+x] = in_addr[i+2][j+2];
+				a[11+x] = in_addr[i+2][j+3];
+				a[12+x] = in_addr[i+3][j];
+				a[13+x] = in_addr[i+3][j+1];
+				a[14+x] = in_addr[i+3][j+2];
+				a[15+x] = in_addr[i+3][j+3];
 			}
 		}
 	}
-	//printf("count=%d\n	", count);
-	// for (i = 0; i < inSize.r + 2 * (kernel_size.r - 1); i++)
-	// {
-	// 	free(exInputData[i]);
-	// }
-	// free(exInputData);
-	nSize outSize = { outSizeW,outSizeH };
-	switch (type)
-	{
-	case full:
-		return outputData;
-	case same:
-	{
-		int** sameres = matEdgeShrink(outputData, outSize, halfkernel_sizew, halfkernel_sizeh);
-		for (i = 0; i < outSize.r; i++)
-		{
-			free(outputData[i]);
-		}
-		free(outputData);
-		return sameres;
-	}
-	case valid:
-	{
-		int** validres;
-		if (kernel_size.r % 2 == 0 && kernel_size.c % 2 == 0)
-		{
-			validres = matEdgeShrink(outputData, outSize, halfkernel_sizew * 2 - 1, halfkernel_sizeh * 2 - 1);
-		}
-		else
-		{
-			validres = matEdgeShrink(outputData, outSize, halfkernel_sizew * 2, halfkernel_sizeh * 2);
-		}
-		for (i = 0; i < outSize.r; i++)
-		{
-			free(outputData[i]);
-		}
-		free(outputData);
-		return validres;
-	}
-	default:
-		return outputData;
-	}
-}
-
-//
-int** cov(int** map, nSize kernel_size, int** inputData, nSize inSize, int type)
-{
-	//int i;
-	int** res = correlation(map, kernel_size, inputData, inSize, type);
-	return res;
-}
-
-//full补0方式
-int** matEdgeExpand(int** mat, nSize matSize, int addc, int addr)
-{
-	int i, j = 0;
-	int c = matSize.c;
-	int r = matSize.r;
-	int** res = (int**)malloc((r + 2 * addr) * sizeof(int*));
-	/*for (i = 0; i < 28; i++)
-		for (j = 0; j < 28; j++)
-			printf("mat[i][j]= %f\n", mat[i][j]);
-	printf("\n\n");
-	*/
-	for (i = 0; i < (r + 2 * addr); i++)
-	{
-		res[i] = (int*)malloc((c + 2 * addc) * sizeof(int));
-	}
-	for (j = 0; j < r + 2 * addr; j++)
-	{
-		for (i = 0; i < c + 2 * addc; i++)
-		{
-			if (j < addr || i < addc || j >= (r + addr) || i >= (c + addc))
-
-				res[j][i] = (int)0.0;
-			else
-				res[j][i] = mat[j - addr][i - addc];
-			//printf("		res[i][j]=%f", res[i][j]);
-		}
-	}
-
-	return res;
-}
-//same、valid方式补0
-int** matEdgeShrink(int** mat, nSize matSize, int shrinkc, int shrinkr)
-{
-	int i, j;
-	int c = matSize.c;
-	int r = matSize.r;
-	int** res = (int**)malloc((r - 2 * shrinkr) * sizeof(int*));
-	for (i = 0; i < (r - 2 * shrinkr); i++)
-	{
-		res[i] = (int*)malloc((c - 2 * shrinkc) * sizeof(int));
-	}
-
-	for (j = 0; j < r; j++)
-	{
-		for (i = 0; i < c; i++)
-		{
-			if (j >= shrinkr && i >= shrinkc && j < (r - shrinkr) && i < (c - shrinkc))
-			{
-				res[j - shrinkr][i - shrinkc] = mat[j][i];
+	else{
+		for(int i=0; i<2*col_step; i+=2){
+			for(int j=0;j<2*row_step;j+=2){
+				x = 8*(j+row_step*i);
+				a[x] = b[i][j];
+				a[1+x] = b[i][j+1];
+				a[2+x] = b[i][j+2];
+				a[3+x] = b[i][j+3];
+				a[4+x] = b[i+1][j];
+				a[5+x] = b[i+1][j+1];
+				a[6+x] = b[i+1][j+2];
+				a[7+x] = b[i+1][j+3];
+				a[8+x] = b[i+2][j];
+				a[9+x] = b[i+2][j+1];
+				a[10+x] = b[i+2][j+2];
+				a[11+x] = b[i+2][j+3];
+				a[12+x] = b[i+3][j];
+				a[13+x] = b[i+3][j+1];
+				a[14+x] = b[i+3][j+2];
+				a[15+x] = b[i+3][j+3];
 			}
 		}
 	}
-	return res;
-}
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(reshape_et)
+	);
+	// printf("reshape time = %d\n",reshape_et-reshape_st);
 
+	int* c = (int*)malloc((w-2)*(w-2) * sizeof(int));
+	int *pc = &c[0];
 
-//
-int** transpose_matrix(int** input, int c, int r)
-{
-	int** output;
-	output = (int**)malloc(sizeof(int*) * r);
-	int i, j, k;
-	//int count=0;
-	for (i = 0; i < r; i++)
-	{
-		output[i] = (int*)malloc(sizeof(int) * c);
-		for (j = 0; j < c; j++)
-		{
-			output[i][j] = input[j][i];
-			//count++;
-			//printf("%f\n", output[i][j]);
+	int *addr = &a[0];
 
+	for(int j=0;j<row_step*col_step;j++){
+			// if((j%row_step)==0){
+				conv23(16,addr+16*j);
+			// }
+			// else{
+				// conv23(65552,addr+16*j);
+			// }
+			wb23(pc+4*j);
+	}
+	int y,z;
+	if(m%2!=0){
+		for(int i=1; i<(w-2)/2+1;i++){
+			z = (w-2)*2*i;
+			y = (w-2)*(w-4)+4*i;
+			*(pc+z-3)=-1000000;
+			*(pc+z-1)=-1000000;
+			*(pc+y-2) = -1000000;
+			*(pc+y-1) = -1000000;
 		}
 	}
-	//printf("%d", count);
-	return output;
+
+	for(int i=0;i<(w-2)*(w-2);i++){
+		// printf("c[%d]=%d\n",i,c[i]);
+	}
+	
+
+	return c;
 }
+
 int activation_relu(int input, int bias)
 {
 	int temp = input + bias;
 	return (temp > 0) ? temp : 0;
 }
 
-void MaxPooling(int** output, nSize outputSize, int** input, nSize inputSize, int kernel_size, int stride)
-{
-	int i, j, m, n;
-	int t_m, t_n;
-	t_m = t_n = 0;
-	int sum;
-	int count = 0;
+void MaxPooling_noreshape(int** output,int* input,int inputSize,int bias){
 
-	for (i = 0; i < outputSize.r; i++)
-	{
-		for (j = 0; j < outputSize.c; j++)
-		{
-			sum = 0.0;
-
-			for (m = t_m; m < (t_m + kernel_size); m++)
-			{
-				for (n = t_n; n < (t_n + kernel_size); n++)
-				{
-					if (m > (inputSize.r - 1) || n > (inputSize.c - 1));
-					else
-					{
-						if (sum < input[m][n])
-						{
-							sum = input[m][n];
-						}
-					}
-				}
-			}
-			output[i][j] = sum;
-			//printf("%f\n",output[i][j]);
-			t_n = t_n + stride;
-		}
-		t_m = t_m + stride;
-		t_n = 0;
+	int m = inputSize;
+	int *c = (int*)malloc((m/2)*(m/2) * sizeof(int));
+	int *addr_in = &input[0];
+	int *addr_out = &c[0];
+	for(int i=0; i<(m/2)*(m/2);i++){
+		mp_ri(addr_in+4*i);
+		max_pooling();
+		relu(bias);
+		mp_wb(addr_out+i);
 	}
-	//printf("n", count);
+
+	int max_reshape_st;
+	int max_reshape_et;
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(max_reshape_st)
+	);
+	for(int i=0; i<m/2; i++){
+		for(int j=0;j<m/2;j++){
+			output[i][j] = c[i*(m/2)+j];
+		}
+	}
+	__asm__ __volatile__(
+	"rdcycle %[rdcycle]"
+	:[rdcycle] "=r"(max_reshape_et)
+	);
+	// printf("max pool reshape time = %d\n",max_reshape_et - max_reshape_st);
 }
+
 
 int** read_image_padding1(char* filename){
 	int w=30;
@@ -433,10 +356,7 @@ int input_data_temp_mx[30][30]=\
 
 int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels)
 {
-	//clock_t start, end;
-	// time_t start,end;
-	//start = clock();
-	// start = time(NULL);
+
 	int i, j, c, r;
 	int** mapout;
 	
@@ -459,26 +379,33 @@ int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, in
 		}
 	}
 	covL->basicData = (int*)malloc(outChannels * sizeof(int));
-
 	int outW = inputWidth - kernel_size + 1;
 	int outH = inputHeight - kernel_size + 1;
 
 	covL->v = (int***)malloc(sizeof(int**) * (outChannels));
 	covL->y = (int***)malloc(sizeof(int**) * (outChannels));
 
+	int outW_p,outH_p;
+	if(outW%2==0){
+		outW_p = outW/2; 
+		outH_p = outH/2;
+	}
+	else{
+		outW_p = (outW+1)/2;
+		outH_p = (outH+2)/2;
+	}
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		covL->v[j] = (int**)malloc(sizeof(int*) * outH);
-		covL->y[j] = (int**)malloc(sizeof(int*) * outH);
-		for (r = 0; r < outH; r++)
+		covL->v[j] = (int**)malloc(sizeof(int*) * outH_p);
+		covL->y[j] = (int**)malloc(sizeof(int*) * outH_p);
+		for (r = 0; r < outH_p; r++)
 		{
-			covL->v[j][r] = (int*)calloc(outW, sizeof(int));
-			covL->y[j][r] = (int*)calloc(outW, sizeof(int));
+			covL->v[j][r] = (int*)calloc(outW_p, sizeof(int));
+			covL->y[j][r] = (int*)calloc(outW_p, sizeof(int));
 		}
 	}
-
-	//read_file_conv(Filename, outChannels, inChannels, kernel_size, kernel_size, covL);
-	int convL_basicData[6] = {-168,159,-332,-3,3,-5};
+	
+	int convL_basicData[6] = {-172032,162816,-339968,-3072,3072,-5120};
 	int convL_mapData[6][1][3][3] = {{{{-187,376,431},\
 									{-534,-33,300},\
 									{-186,104,20}}},\
@@ -515,31 +442,50 @@ int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, in
 		}
 	}
 
+
 	nSize kernel_size1 = { kernel_size,kernel_size };
 	nSize inSize = { inputWidth,inputHeight };
 	nSize outSize = { outW,outH };
+	
+	int* mapout_1d = (int*)malloc(outW*outH * sizeof(int));
+	int** addmat_out = (int**)malloc(outChannels * sizeof(int*));
+	for(int m=0; m<outChannels; m++){
+		addmat_out[m] = (int*)malloc(outW*outH * sizeof(int));
+	}
+	
+	nSize outSize_pool = { outW_p,outH_p };
+	int relu_s = 0;
+	int relu_e = 0;
+	int div_s = 0;
+	int div_e = 0;
 
+	int* bias0 = (int*)malloc(outChannels * sizeof(int));
+	for(int i = 0; i < outChannels; i++){
+		bias0[i] = 0;
+	}
 
 	for (i = 0; i < (outChannels); i++)
 	{
 		for (j = 0; j < (inChannels); j++)
 		{
-			mapout = cov(covL->mapData[i][j], kernel_size1, inputData, inSize, full);
-			addmat(covL->v[i], covL->v[i], outSize, mapout, outSize);
+			mapout_1d = conv_noreshape(inputData,covL->mapData[i][j],inputWidth);
+			addmat_1d(addmat_out[i],addmat_out[i],mapout_1d,outW*outH);
 		}
-		for (r = 0; r < outSize.r; r++)
+		// MaxPooling_noreshape(covL->v[i],addmat_out[i],outW,covL->basicData[i]);
+		MaxPooling_noreshape(covL->v[i],addmat_out[i],outW,covL->basicData[i]);
+		for (r = 0; r < outW_p; r++)
 		{
-			for (c = 0; c < outSize.c; c++)
+			for (c = 0; c < outH_p; c++)
 			{
-				covL->y[i][r][c] = covL->v[i][r][c]>>10;
-				covL->y[i][r][c] = activation_relu(covL->y[i][r][c], covL->basicData[i]);
 				
-				//printf("%f\n", covL->y[i][r][c]);
+				// covL->y[i][r][c] = covL->y[i][r][c]>>10;
+				covL->y[i][r][c] = (covL->v[i][r][c])>>10;
+				// covL->y[i][r][c] = activation_relu(covL->y[i][r][c], covL->basicData[i]);
+				// printf("v[%d][%d][%d]=%d\n",i,r,c,covL->v[i][r][c]);
+				// printf("y[%d][%d][%d]=%d\n",i,r,c,covL->y[i][r][c]);
 			}
 		}
-		//printf("\n");
 	}
-
 
 	for (i = (outChannels - 1); i != (-1); i--)
 	{
@@ -556,7 +502,7 @@ int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, in
 	free(covL->mapData);
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		for (r = 0; r < outH; r++)
+		for (r = 0; r < outH_p; r++)
 		{
 			free(covL->v[j][r]);
 		}
@@ -565,22 +511,15 @@ int*** input(int**inputData, char* Filename, int inputWidth, int inputHeight, in
 	free(covL->v);
 	free(covL->basicData);
 
-	//end = clock();
-	// end = time(NULL);
-	//ori fprintf(stderr, "conv time = %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
-	//printf("start=%d,end=%d",start,end);
-	//printf("conv time = %d seconds\n", (int)(end - start) / CLOCKS_PER_SEC);
 	return covL->y;
 }
 int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, int kernel_size, int inChannels, int outChannels)
 {
-	// clock_t start, end;
-	// start = clock();
 
 	int** mapout;
 	int i, j, c, r;
 
-	CovLayer* covL = (CovLayer*)malloc(sizeof(CovLayer));//��ʼ��������
+	CovLayer* covL = (CovLayer*)malloc(sizeof(CovLayer));
 	covL->mapData = (int****)malloc(outChannels * sizeof(int***));
 
 	for (i = (outChannels - 1); i != (-1); i--)
@@ -594,7 +533,6 @@ int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, i
 			for (r = (kernel_size - 1); r != (-1); r--)
 			{
 				covL->mapData[i][j][r] = (int*)malloc(kernel_size * sizeof(int));
-				//printf("mapdata= %p\n", covL->mapData[i][j][r][c]);
 			}
 		}
 	}
@@ -603,23 +541,32 @@ int*** conv(int*** inputData, char* Filename, int inputWidth, int inputHeight, i
 	
 	int outW = inputWidth - kernel_size + 1;
 	int outH = inputHeight - kernel_size + 1;
+	int outW_p,outH_p;
+	if(outW%2==0){
+		outW_p = outW/2; 
+		outH_p = outH/2;
+	}
+	else{
+		outW_p = (outW+1)/2;
+		outH_p = (outH+2)/2;
+	}
 	covL->v = (int***)malloc(sizeof(int**) * (outChannels));
 	covL->y = (int***)malloc(sizeof(int**) * (outChannels));
+
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		covL->v[j] = (int**)malloc(sizeof(int*) * outH);
-		covL->y[j] = (int**)malloc(sizeof(int*) * outH);
-		for (r = 0; r < outH; r++)
+		covL->v[j] = (int**)malloc(sizeof(int*) * outH_p);
+		covL->y[j] = (int**)malloc(sizeof(int*) * outH_p);
+		for (r = 0; r < outH_p; r++)
 			//for (r = outH-1; r != (-1); r--)
 		{
-			covL->v[j][r] = (int*)calloc(outW, sizeof(int));
-			covL->y[j][r] = (int*)calloc(outW, sizeof(int));
+			covL->v[j][r] = (int*)calloc(outW_p, sizeof(int));
+			covL->y[j][r] = (int*)calloc(outW_p, sizeof(int));
 		}
 	}
 
-
-int covL_basicdata[16] = {-1,-78,-122,-183,212,-111,24,-78,22,\
-								-284,691,-217,242,-10,358,-53};
+	int covL_basicdata[16] = {-1024,-79872,-124928,-187392,217088,-113664,24576,\
+	-79872,22528,-290816,707584,-222208,247808,-10240,366592,-54272};
 
 	int covL_mapdata[16][6][3][3] = \
 {{{{194,-186,206},{43,-101,-220},{118,-205,152}},\
@@ -736,26 +683,38 @@ int covL_basicdata[16] = {-1,-78,-122,-183,212,-111,24,-78,22,\
 	nSize kernel_size1 = { kernel_size,kernel_size };
 	nSize inSize = { inputWidth,inputHeight };
 	nSize outSize = { outW,outH };
+	
+	int* mapout_1d = (int*)malloc(2*outH_p*2*outW_p * sizeof(int));
+	int** addmat_out = (int**)malloc(outChannels * sizeof(int*));
+	for(int m=0; m<outChannels; m++){
+		addmat_out[m] = (int*)malloc(2*outH_p*2*outW_p * sizeof(int));
+	}
+	
+	nSize outSize_pool = { outW_p,outH_p };
+	int relu_s = 0;
+	int relu_e = 0;
 
+	int* bias0 = (int*)malloc(outChannels * sizeof(int));
 
 	for (i = 0; i < (outChannels); i++)
 	{
 		for (j = 0; j < (inChannels); j++)
 		{
-			mapout = cov(covL->mapData[i][j], kernel_size1, inputData[j], inSize, full);
-			addmat(covL->v[i], covL->v[i], outSize, mapout, outSize);	
+			mapout_1d = conv_noreshape(inputData[j],covL->mapData[i][j],inputWidth);
+			addmat_1d(addmat_out[i],addmat_out[i],mapout_1d,2*outH_p*2*outW_p);
 		}
-		for (r = 0; r < outSize.r; r++)
+		// MaxPooling_noreshape(covL->v[i],addmat_out[i],2*outH_p,covL->basicData[i]);
+		MaxPooling_noreshape(covL->v[i],addmat_out[i],2*outH_p,covL->basicData[i]);
+		for (r = 0; r < outH_p; r++)
 		{
-			for (c = 0; c < outSize.c; c++)
+			for (c = 0; c < outW_p; c++)
 			{
+				// covL->y[i][r][c] = activation_relu(covL->v[i][r][c], covL->basicData[i]);
+				// covL->y[i][r][c] = covL->y[i][r][c]>>10;
 				covL->y[i][r][c] = covL->v[i][r][c]>>10;
-				covL->y[i][r][c] = activation_relu(covL->y[i][r][c], covL->basicData[i]);
-				
-				//printf("%f\n", covL->y[i][r][c]);
+				// covL->y[i][r][c] = activation_relu(covL->y[i][r][c], covL->basicData[i]);
 			}
 		}
-		//printf("\n");
 	}
 
 
@@ -774,7 +733,7 @@ int covL_basicdata[16] = {-1,-78,-122,-183,212,-111,24,-78,22,\
 	free(covL->mapData);
 	for (j = (outChannels - 1); j != (-1); j--)
 	{
-		for (r = 0; r < outH; r++)
+		for (r = 0; r < outH_p; r++)
 		{
 			free(covL->v[j][r]);
 		}
@@ -783,56 +742,7 @@ int covL_basicdata[16] = {-1,-78,-122,-183,212,-111,24,-78,22,\
 	free(covL->v);
 	free(covL->basicData);
 
-	// end = clock();
-	// fprintf(stderr, "conv time = %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
 	return covL->y;
-}
-int*** pool(int*** inputData, int inputWidth, int inputHeight, int poolType, int kernel_size, int inChannels, int outChannels, int stride)
-{
-	// clock_t start, end;
-	// start = clock();
-
-	int i;
-	int count = 0;
-	int outW, outH;
-	if (stride == 2)
-	{
-		outW = ((inputWidth % 2 == 0) ? 0 : 1) + inputWidth / kernel_size;
-		outH = ((inputHeight % 2 == 0) ? 0 : 1) + inputHeight / kernel_size;
-	}
-	else
-	{
-		outW = (inputWidth - kernel_size) / stride + 1;
-		outH = (inputHeight - kernel_size) / stride + 1;
-	}
-	int outputWidth = outW;//12
-	int outputHeight = outH;//12
-	int j, r;
-
-	PoolLayer* poolL = (PoolLayer*)malloc(sizeof(PoolLayer));
-	poolL->y = (int***)malloc(outChannels * sizeof(int**));
-	for (j = (outChannels - 1); j != (-1); j--)
-	{
-		poolL->y[j] = (int**)malloc(outH * sizeof(int*));
-		for (r = (outH - 1); r != (-1); r--)
-		{
-			poolL->y[j][r] = (int*)calloc(outW, sizeof(int));
-		}
-	}
-
-	nSize inSize = { inputWidth,inputHeight };
-	nSize outSize = { outputWidth,outputHeight };
-
-	for (i = 0; i < outChannels; i++)
-	{
-		MaxPooling(poolL->y[i], outSize, inputData[i], inSize, kernel_size, stride);
-		//printf("	%f\n", poolL->y[i]);
-		count++;
-	}
-
-	// end = clock();
-	// fprintf(stderr, "pool time = %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
-	return poolL->y;
 }
 
 int* flatten(int ***inputData,int inputWidth,int inputHeight,int inChannels,int outputNum)
@@ -1228,7 +1138,7 @@ int outL_basicdata[10] = {-84,-32,140,243,-471,144,481,-26,-162,-170};
 		// outL->outputdata[i] = activation_relu(outL->outputdata[i], outL->basicData[i]);
 		//printf("%f\n ",outL->outputdata[i]);
 		outL->outputdata[i] = outL->outputdata[i]>>10;
-		// printf("output %d\n", outL->outputdata[i]);
+		printf("output %d\n", outL->outputdata[i]);
 	}
 
 	for (i = (outputNum - 1); i != (-1); i--)
@@ -1240,6 +1150,83 @@ int outL_basicdata[10] = {-84,-32,140,243,-471,144,481,-26,-162,-170};
 }
 
 
+void conv23(int size,int *addr){
+	int result;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 1, 0, %[con_o], %[con_i1], %[con_i2]"
+		:[con_o] "=r"(result)
+		:[con_i1]"r"(addr),[con_i2]"r"(size)
+		);
+}
+
+void wb23(int *addr){
+	int n=0;
+	int result;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 1, 1, %[out], %[addr], %[null]"
+		:[out] "=r"(result)
+		:[addr]"r"(addr),[null]"r"(n)
+		:"memory"
+	);
+}
+
+void w_wb(int rank, int value){
+	int null;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 4, 0, %[null], %[rank], %[value]"
+		:[null] "=r"(null)
+		:[rank]"r"(rank),[value]"r"(value)
+		);
+}
+
+void max_pooling(){
+	int null;
+	int in1=0;
+	int in2=0;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 2, 0, %[null], %[in1], %[in2]"
+		:[null] "=r"(null)
+		:[in1]"r"(in1),[in2]"r"(in2)
+		);
+}
+
+void mp_wb(int *addr){
+	int null;
+	int in2=0;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 2, 1, %[null], %[addr], %[in2]"
+		:[null] "=r"(null)
+		:[addr]"r"(addr),[in2]"r"(in2)
+		);
+}
+void mp_ri(int *addr){
+	int null;
+	int in2 = 0;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 2, 2, %[null], %[addr], %[in2]"
+		:[null] "=r"(null)
+		:[addr]"r"(addr),[in2]"r"(in2)
+		);
+}
+
+void relu(int bias){
+	int null;
+	int in2 = 0;
+	__asm__ __volatile__(
+		"addi zero,zero,0\n"
+		".insn r 0x77, 3, 0, %[null], %[in1], %[in2]"
+		:[null] "=r"(null)
+		:[in1]"r"(bias),[in2]"r"(in2)
+		);
+}
+
+
 int main(int argc, char* argv[])
 {
 	int cycle_s;
@@ -1247,12 +1234,8 @@ int main(int argc, char* argv[])
 
 	int conv1_st;
 	int conv1_et;
-	int maxpool1_st;
-	int maxpool1_et;
 	int conv2_st;
 	int conv2_et;
-	int maxpool2_st;
-	int maxpool2_et;
 	int flatten_st;
 	int flatten_et;
 	int fc1_st;
@@ -1275,10 +1258,12 @@ int main(int argc, char* argv[])
 	
 	filename = "";
 	filename1 = "";
-	
+
 	inputData = read_image_padding1(filename);
 
+	////////////////////
 	//////conv1/////////
+	////////////////////
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(conv1_st)
@@ -1289,55 +1274,35 @@ int main(int argc, char* argv[])
 	:[rdcycle] "=r"(conv1_et)
 	);
 
-	//////max pool 1///////
-
-	
-	__asm__ __volatile__(
-	"rdcycle %[rdcycle]"
-	:[rdcycle] "=r"(maxpool1_st)
-	);
-	y=pool(y,28,28, MaxPool, 2,6,6,2);//kernal_size=3
-	__asm__ __volatile__(
-	"rdcycle %[rdcycle]"
-	:[rdcycle] "=r"(maxpool1_et)
-	);
-
-	///////conv2////////
+	////////////////////
+	//////conv2/////////
+	////////////////////
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(conv2_st)
 	);
-	y=conv(y,filename,14,14,3,6,16);//kernal_size=3
+	y=conv(y,filename,14,14,3,6,16);
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(conv2_et)
 	);
 
-	//////max pool 2///////
-
-	__asm__ __volatile__(
-	"rdcycle %[rdcycle]"
-	:[rdcycle] "=r"(maxpool2_st)
-	);
-	y=pool(y,12,12, MaxPool,2,16,16,2);//kernal_size=3
-	__asm__ __volatile__(
-	"rdcycle %[rdcycle]"
-	:[rdcycle] "=r"(maxpool2_et)
-	);
-
-
+	////////////////////
 	//////flatten///////
+	////////////////////
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(flatten_st)
 	);
-	y1 = flatten(y, 6, 6, 16, 576);//kernal_size=3
+	y1 = flatten(y,6,6,16,576);
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(flatten_et)
 	);
 
-	///////fc1//////////
+	////////////////////
+	////////fc1/////////
+	////////////////////
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(fc1_st)
@@ -1348,7 +1313,9 @@ int main(int argc, char* argv[])
 	:[rdcycle] "=r"(fc1_et)
 	);
 
-	///////fc2/////////
+	////////////////////
+	////////fc2/////////
+	////////////////////
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(fc2_st)
@@ -1359,7 +1326,9 @@ int main(int argc, char* argv[])
 	:[rdcycle] "=r"(fc2_et)
 	);
 
-	///////output/////
+	////////////////////
+	//////output////////
+	////////////////////
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(out_st)
@@ -1370,26 +1339,19 @@ int main(int argc, char* argv[])
 	:[rdcycle] "=r"(out_et)
 	);
 	
-	
 	__asm__ __volatile__(
 	"rdcycle %[rdcycle]"
 	:[rdcycle] "=r"(cycle_e)
 	);
 
-	// printf("conv1 time=%d\n",conv1_et-conv1_st);
-	// printf("maxpool1 time=%d\n",maxpool1_et-maxpool1_st);
-	// printf("conv2 time=%d\n",conv2_et-conv2_st);
-	// printf("maxpool2 time=%d\n",maxpool2_et-maxpool2_st);
-	// printf("flatten time=%d\n",flatten_et-flatten_st);
-	// printf("fc1 time=%d\n",fc1_et-fc1_st);
-	// printf("fc2 time=%d\n",fc2_et-fc2_st);
-	// printf("output time=%d\n",out_et-out_st);
+	printf("conv1 time=%d\n",conv1_et-conv1_st);
+	printf("conv2 time=%d\n",conv2_et-conv2_st);
+	printf("flatten time=%d\n",flatten_et-flatten_st);
+	printf("fc1 time=%d\n",fc1_et-fc1_st);
+	printf("fc2 time=%d\n",fc2_et-fc2_st);
+	printf("output time=%d\n",out_et-out_st);
 
 	printf("cycle=%d\n",cycle_e-cycle_s);
-
-
-	//end_all = clock();
-	//fprintf(stderr, "\n------------------------------------------\ntotal time          =  %f seconds\n------------------------------------------\n", (double)(end_all - start_all) / CLOCKS_PER_SEC);
-
 	return 0;
 }
+
