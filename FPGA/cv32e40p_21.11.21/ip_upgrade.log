@@ -1,0 +1,151 @@
+Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2020.1 (win64) Build 2902540 Wed May 27 19:54:49 MDT 2020
+| Date         : Tue Dec  7 19:51:16 2021
+| Host         : DESKTOP-RURI7LE running 64-bit major release  (build 9200)
+| Command      : upgrade_ip
+| Device       : xc7a35tcsg324-1
+------------------------------------------------------------------------------------
+
+Upgrade Log for IP 'blk_mem_gen_0'
+
+1. Summary
+----------
+
+CAUTION (success, with warnings) in the conversion of blk_mem_gen_0 (xilinx.com:ip:blk_mem_gen:8.4 (Rev. 4)) to Vivado generation flows.
+
+After upgrade, an IP may have parameter and port differences compared to the original customization. Please review the parameters within the IP customization GUI to ensure proper functionality. Also, please review the updated IP instantiation template to ensure proper connectivity, and update your design if required.
+
+2. Connection Warnings
+----------------------
+
+Detected external port differences while upgrading 'blk_mem_gen_0'. These changes may impact your design.
+
+
+-Upgraded port 'addra' width 4 differs from original width 16
+
+-Upgraded port 'addrb' width 4 differs from original width 16
+
+
+3. Customization warnings
+-------------------------
+
+The normal upgrade process failed due to validation failures in the given configuration. Attempting partial upgrade to set as many user parameters as possible. Please check the parameters whose values were not applied.
+
+Unable to set the value '65535' on parameter 'Write Depth A' due to the following failure - 
+Validation failed for parameter 'Disable Collision Warnings(Disable_Collision_Warnings)' with value 'false' for IP 'blk_mem_gen_0'. User configuration exceeds BRAM count in the selected device
+. Restoring to an old valid value of '16'
+
+Unable to set the value 'true' on parameter 'Load Init File' due to the following failure - 
+Validation failed for parameter 'Coe File(Coe_File)' with value 'no_coe_file_loaded' for IP 'blk_mem_gen_0'. No COE file loaded
+. Restoring to an old valid value of 'false'
+
+An attempt to modify the value of disabled parameter 'Coe_File' from 'no_coe_file_loaded' to '../../conv.coe' has been ignored for IP 'blk_mem_gen_0'
+
+
+4. Debug Commands
+-----------------
+
+  The following debug information can be passed to Vivado as Tcl commands,
+in order to validate or debug the output of the upgrade flow.
+  You may consult any warnings from within this upgrade, and alter or remove
+the configuration parameter(s) which caused the warning; then execute the Tcl
+commands, and use the IP Customization GUI to verify the IP configuration.
+
+create_ip -vlnv xilinx.com:ip:blk_mem_gen:8.4 -user_name blk_mem_gen_0
+set_property -dict "\
+  CONFIG.AXI_ID_Width {4} \
+  CONFIG.AXI_Slave_Type {Memory_Slave} \
+  CONFIG.AXI_Type {AXI4_Full} \
+  CONFIG.Additional_Inputs_for_Power_Estimation {false} \
+  CONFIG.Algorithm {Minimum_Area} \
+  CONFIG.Assume_Synchronous_Clk {false} \
+  CONFIG.BRAM_PORTA.MASTER_TYPE {OTHER} \
+  CONFIG.BRAM_PORTA.MEM_ECC {NONE} \
+  CONFIG.BRAM_PORTA.MEM_SIZE {8192} \
+  CONFIG.BRAM_PORTA.MEM_WIDTH {32} \
+  CONFIG.BRAM_PORTA.READ_LATENCY {1} \
+  CONFIG.BRAM_PORTA.READ_WRITE_MODE {} \
+  CONFIG.BRAM_PORTB.MASTER_TYPE {OTHER} \
+  CONFIG.BRAM_PORTB.MEM_ECC {NONE} \
+  CONFIG.BRAM_PORTB.MEM_SIZE {8192} \
+  CONFIG.BRAM_PORTB.MEM_WIDTH {32} \
+  CONFIG.BRAM_PORTB.READ_LATENCY {1} \
+  CONFIG.BRAM_PORTB.READ_WRITE_MODE {} \
+  CONFIG.Byte_Size {8} \
+  CONFIG.CLK.ACLK.ASSOCIATED_BUSIF {AXI_SLAVE_S_AXI:AXILite_SLAVE_S_AXI} \
+  CONFIG.CLK.ACLK.ASSOCIATED_RESET {s_aresetn} \
+  CONFIG.CLK.ACLK.CLK_DOMAIN {} \
+  CONFIG.CLK.ACLK.FREQ_HZ {100000000} \
+  CONFIG.CLK.ACLK.FREQ_TOLERANCE_HZ {0} \
+  CONFIG.CLK.ACLK.INSERT_VIP {0} \
+  CONFIG.CLK.ACLK.PHASE {0.000} \
+  CONFIG.CTRL_ECC_ALGO {NONE} \
+  CONFIG.Coe_File {../../conv.coe} \
+  CONFIG.Collision_Warnings {ALL} \
+  CONFIG.Component_Name {blk_mem_gen_0} \
+  CONFIG.Disable_Collision_Warnings {false} \
+  CONFIG.Disable_Out_of_Range_Warnings {false} \
+  CONFIG.ECC {false} \
+  CONFIG.EN_DEEPSLEEP_PIN {false} \
+  CONFIG.EN_ECC_PIPE {false} \
+  CONFIG.EN_SAFETY_CKT {false} \
+  CONFIG.EN_SHUTDOWN_PIN {false} \
+  CONFIG.EN_SLEEP_PIN {false} \
+  CONFIG.Enable_32bit_Address {false} \
+  CONFIG.Enable_A {Use_ENA_Pin} \
+  CONFIG.Enable_B {Use_ENB_Pin} \
+  CONFIG.Error_Injection_Type {Single_Bit_Error_Injection} \
+  CONFIG.Fill_Remaining_Memory_Locations {false} \
+  CONFIG.Interface_Type {Native} \
+  CONFIG.Load_Init_File {true} \
+  CONFIG.MEM_FILE {no_mem_loaded} \
+  CONFIG.Memory_Type {True_Dual_Port_RAM} \
+  CONFIG.Operating_Mode_A {READ_FIRST} \
+  CONFIG.Operating_Mode_B {READ_FIRST} \
+  CONFIG.Output_Reset_Value_A {0} \
+  CONFIG.Output_Reset_Value_B {0} \
+  CONFIG.PRIM_type_to_Implement {BRAM} \
+  CONFIG.Pipeline_Stages {0} \
+  CONFIG.Port_A_Clock {100} \
+  CONFIG.Port_A_Enable_Rate {100} \
+  CONFIG.Port_A_Write_Rate {50} \
+  CONFIG.Port_B_Clock {100} \
+  CONFIG.Port_B_Enable_Rate {100} \
+  CONFIG.Port_B_Write_Rate {50} \
+  CONFIG.Primitive {8kx2} \
+  CONFIG.RD_ADDR_CHNG_A {false} \
+  CONFIG.RD_ADDR_CHNG_B {false} \
+  CONFIG.READ_LATENCY_A {1} \
+  CONFIG.READ_LATENCY_B {1} \
+  CONFIG.RST.ARESETN.INSERT_VIP {0} \
+  CONFIG.RST.ARESETN.POLARITY {ACTIVE_LOW} \
+  CONFIG.Read_Width_A {32} \
+  CONFIG.Read_Width_B {32} \
+  CONFIG.Register_PortA_Output_of_Memory_Core {false} \
+  CONFIG.Register_PortA_Output_of_Memory_Primitives {false} \
+  CONFIG.Register_PortB_Output_of_Memory_Core {false} \
+  CONFIG.Register_PortB_Output_of_Memory_Primitives {false} \
+  CONFIG.Remaining_Memory_Locations {0} \
+  CONFIG.Reset_Memory_Latch_A {false} \
+  CONFIG.Reset_Memory_Latch_B {false} \
+  CONFIG.Reset_Priority_A {CE} \
+  CONFIG.Reset_Priority_B {CE} \
+  CONFIG.Reset_Type {SYNC} \
+  CONFIG.Use_AXI_ID {false} \
+  CONFIG.Use_Byte_Write_Enable {true} \
+  CONFIG.Use_Error_Injection_Pins {false} \
+  CONFIG.Use_REGCEA_Pin {false} \
+  CONFIG.Use_REGCEB_Pin {false} \
+  CONFIG.Use_RSTA_Pin {false} \
+  CONFIG.Use_RSTB_Pin {false} \
+  CONFIG.Write_Depth_A {65535} \
+  CONFIG.Write_Width_A {32} \
+  CONFIG.Write_Width_B {32} \
+  CONFIG.ecctype {No_ECC} \
+  CONFIG.register_porta_input_of_softecc {false} \
+  CONFIG.register_portb_output_of_softecc {false} \
+  CONFIG.softecc {false} \
+  CONFIG.use_bram_block {Stand_Alone} " [get_ips blk_mem_gen_0]
+
+

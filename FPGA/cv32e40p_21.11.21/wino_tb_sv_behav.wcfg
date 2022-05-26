@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="wino_tb_sv_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="cv32e40p_apu_core_pkg" />
+            <top_module name="cv32e40p_fpu_pkg" />
+            <top_module name="cv32e40p_pkg" />
+            <top_module name="glbl" />
+            <top_module name="wino_tb_sv" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="5323219903fs"></ZoomStartTime>
+      <ZoomEndTime time="5454170481fs"></ZoomEndTime>
+      <Cursor1Time time="5348844285fs"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="206"></NameColumnWidth>
+      <ValueColumnWidth column_width="76"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="13" />
+   <wvobject fp_name="/wino_tb_sv/clk" type="logic">
+      <obj_property name="ElementShortName">clk</obj_property>
+      <obj_property name="ObjectShortName">clk</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/rst" type="logic">
+      <obj_property name="ElementShortName">rst</obj_property>
+      <obj_property name="ObjectShortName">rst</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/fetch_enable" type="logic">
+      <obj_property name="ElementShortName">fetch_enable</obj_property>
+      <obj_property name="ObjectShortName">fetch_enable</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/u0/core_i/core_sleep_o" type="logic">
+      <obj_property name="ElementShortName">core_sleep_o</obj_property>
+      <obj_property name="ObjectShortName">core_sleep_o</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/cs" type="array">
+      <obj_property name="ElementShortName">cs[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cs[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/led" type="array">
+      <obj_property name="ElementShortName">led[6:0]</obj_property>
+      <obj_property name="ObjectShortName">led[6:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="group93" type="group">
+      <obj_property name="label">mac_ops</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="isExpanded"></obj_property>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/y0_o" type="array">
+         <obj_property name="ElementShortName">y0_o[31:0]</obj_property>
+         <obj_property name="ObjectShortName">y0_o[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/y1_o" type="array">
+         <obj_property name="ElementShortName">y1_o[31:0]</obj_property>
+         <obj_property name="ObjectShortName">y1_o[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/y2_o" type="array">
+         <obj_property name="ElementShortName">y2_o[31:0]</obj_property>
+         <obj_property name="ObjectShortName">y2_o[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/y3_o" type="array">
+         <obj_property name="ElementShortName">y3_o[31:0]</obj_property>
+         <obj_property name="ObjectShortName">y3_o[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/operand_i1" type="array">
+         <obj_property name="ElementShortName">operand_i1[31:0]</obj_property>
+         <obj_property name="ObjectShortName">operand_i1[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/operand_i2" type="array">
+         <obj_property name="ElementShortName">operand_i2[31:0]</obj_property>
+         <obj_property name="ObjectShortName">operand_i2[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/enable_i" type="logic">
+         <obj_property name="ElementShortName">enable_i</obj_property>
+         <obj_property name="ObjectShortName">enable_i</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/con_data" type="array">
+         <obj_property name="ElementShortName">con_data[15:0][31:0]</obj_property>
+         <obj_property name="ObjectShortName">con_data[15:0][31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/con_cs" type="array">
+         <obj_property name="ElementShortName">con_cs[2:0]</obj_property>
+         <obj_property name="ObjectShortName">con_cs[2:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/mem_rdata" type="array">
+         <obj_property name="ElementShortName">mem_rdata[31:0]</obj_property>
+         <obj_property name="ObjectShortName">mem_rdata[31:0]</obj_property>
+      </wvobject>
+   </wvobject>
+   <wvobject fp_name="group100" type="group">
+      <obj_property name="label">mem</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/mac_flag" type="logic">
+         <obj_property name="ElementShortName">mac_flag</obj_property>
+         <obj_property name="ObjectShortName">mac_flag</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/load_store_unit_i/con_cnt" type="array">
+         <obj_property name="ElementShortName">con_cnt[31:0]</obj_property>
+         <obj_property name="ObjectShortName">con_cnt[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/operand_i1" type="array">
+         <obj_property name="ElementShortName">operand_i1[31:0]</obj_property>
+         <obj_property name="ObjectShortName">operand_i1[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/operand_i2" type="array">
+         <obj_property name="ElementShortName">operand_i2[31:0]</obj_property>
+         <obj_property name="ObjectShortName">operand_i2[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/ex_stage_i/cv32e40p_mac_ops_i/mem_rdata" type="array">
+         <obj_property name="ElementShortName">mem_rdata[31:0]</obj_property>
+         <obj_property name="ObjectShortName">mem_rdata[31:0]</obj_property>
+      </wvobject>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/u0/cpuclk_0/clk_out1" type="logic">
+      <obj_property name="ElementShortName">clk_out1</obj_property>
+      <obj_property name="ObjectShortName">clk_out1</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/u0/cpuclk_0/reset" type="logic">
+      <obj_property name="ElementShortName">reset</obj_property>
+      <obj_property name="ObjectShortName">reset</obj_property>
+   </wvobject>
+   <wvobject fp_name="/wino_tb_sv/u0/cpuclk_0/clk_in1" type="logic">
+      <obj_property name="ElementShortName">clk_in1</obj_property>
+      <obj_property name="ObjectShortName">clk_in1</obj_property>
+   </wvobject>
+   <wvobject fp_name="group123" type="group">
+      <obj_property name="label">register</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <wvobject fp_name="/wino_tb_sv/u0/core_i/id_stage_i/register_file_i/mem" type="array">
+         <obj_property name="ElementShortName">mem[31:0][31:0]</obj_property>
+         <obj_property name="ObjectShortName">mem[31:0][31:0]</obj_property>
+         <obj_property name="isExpanded"></obj_property>
+      </wvobject>
+   </wvobject>
+   <wvobject fp_name="group71" type="group">
+      <obj_property name="label">dp_ram</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="isExpanded"></obj_property>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/instr_req_i" type="logic">
+         <obj_property name="ElementShortName">instr_req_i</obj_property>
+         <obj_property name="ObjectShortName">instr_req_i</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/addra" type="array">
+         <obj_property name="ElementShortName">addra[16:0]</obj_property>
+         <obj_property name="ObjectShortName">addra[16:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/douta" type="array">
+         <obj_property name="ElementShortName">douta[31:0]</obj_property>
+         <obj_property name="ObjectShortName">douta[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/enb" type="logic">
+         <obj_property name="ElementShortName">enb</obj_property>
+         <obj_property name="ObjectShortName">enb</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/web" type="array">
+         <obj_property name="ElementShortName">web[3:0]</obj_property>
+         <obj_property name="ObjectShortName">web[3:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/addrb" type="array">
+         <obj_property name="ElementShortName">addrb[16:0]</obj_property>
+         <obj_property name="ObjectShortName">addrb[16:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/doutb" type="array">
+         <obj_property name="ElementShortName">doutb[31:0]</obj_property>
+         <obj_property name="ObjectShortName">doutb[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/wino_tb_sv/u0/ram/blk_ram_i/dinb" type="array">
+         <obj_property name="ElementShortName">dinb[31:0]</obj_property>
+         <obj_property name="ObjectShortName">dinb[31:0]</obj_property>
+      </wvobject>
+   </wvobject>
+</wave_config>
